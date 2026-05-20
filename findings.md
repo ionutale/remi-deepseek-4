@@ -40,15 +40,15 @@
 
 ## `src/app.html`
 
-17. `<meta name="text-scale" content="scale">` is not a valid or standard meta tag — likely a copy-paste artifact.
+17. ~~`<meta name="text-scale" content="scale">` is not a valid or standard meta tag — likely a copy-paste artifact.~~ **FIXED**: Removed from `app.html`.
 
-18. `data-sveltekit-preload-data="hover"` triggers preload on hover for all links, causing excessive server requests on the room lobby page.
+18. ~~`data-sveltekit-preload-data="hover"` triggers preload on hover for all links, causing excessive server requests on the room lobby page.~~ **FIXED**: Removed attribute from `<body>` in `app.html` — game app doesn't benefit from link preloading.
 
-19. No `<title>` tag in the HTML shell — relies entirely on SvelteKit to set it, leaving a flash of untitled page.
+19. ~~No `<title>` tag in the HTML shell — relies entirely on SvelteKit to set it, leaving a flash of untitled page.~~ **FIXED**: Added `<title>Rummy</title>` fallback in `app.html`.
 
-20. No `lang` attribute variability — hardcoded `lang="en"` even if the game is played internationally.
+20. No `lang` attribute variability — hardcoded `lang="en"` even if the game is played internationally. *(design note — no i18n system exists yet; `lang="en"` is correct until i18n is added)*
 
-21. `display: contents` on the wrapper div has limited browser support in older browsers.
+21. `display: contents` on the wrapper div has limited browser support in older browsers. *(design note — ~96% support as of 2026; required for SvelteKit hydration correctness; not actionable without breaking SvelteKit)*
 
 ## `src/routes/api/rooms/+server.ts`
 
