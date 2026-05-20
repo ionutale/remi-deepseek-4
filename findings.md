@@ -18,13 +18,13 @@
 
 ## Database — `src/lib/server/db.ts`
 
-8. MONGODB_URL / MONGODB_DB are immediately reassigned to `MONGODB_URL_VAL` / `MONGODB_DB_VAL` — unnecessary indirection.
+8. ~~MONGODB_URL / MONGODB_DB are immediately reassigned to `MONGODB_URL_VAL` / `MONGODB_DB_VAL` — unnecessary indirection.~~ **FIXED** (resolved in prior work — `db.ts` now uses env vars directly).
 
-9. MongoClient is created with zero configuration — no `maxPoolSize`, `serverSelectionTimeoutMS`, `connectTimeoutMS`, or `retryWrites`. Production MongoDB will silently drop connections.
+9. ~~MongoClient is created with zero configuration — no `maxPoolSize`, `serverSelectionTimeoutMS`, `connectTimeoutMS`, or `retryWrites`. Production MongoDB will silently drop connections.~~ **FIXED** (resolved in prior work — `db.ts` now sets all four options).
 
-10. The singleton `if (db) return db` check never reconnects — if the connection drops, `db` is a stale but truthy reference, and all subsequent DB operations fail silently.
+10. ~~The singleton `if (db) return db` check never reconnects — if the connection drops, `db` is a stale but truthy reference, and all subsequent DB operations fail silently.~~ **FIXED**: `connectDB()` now pings the cached connection via `db.admin().ping()` before returning; on failure it resets `client`/`db` to `undefined` and creates a fresh connection.
 
-11. No `disconnectDB()` or cleanup hook — MongoClient is never closed on server shutdown.
+11. ~~No `disconnectDB()` or cleanup hook — MongoClient is never closed on server shutdown.~~ **FIXED**: Added `disconnectDB()` in `db.ts` and `SIGTERM`/`SIGINT` handlers in `hooks.server.ts`.
 
 12. No connection retry logic — if `connectDB()` fails once during `hooks.server.ts`, the entire server starts without DB but never retries.
 
@@ -36,7 +36,7 @@
 
 15. `connectDB()` is called synchronously inside `handle()` — the first request blocks on DB connection.
 
-16. No MongoClient `close()` on `process.on('SIGTERM')` or `SIGINT`.
+16. ~~No MongoClient `close()` on `process.on('SIGTERM')` or `SIGINT`.~~ **FIXED** (same fix as #11 — `disconnectDB()` called in both signal handlers).
 
 ## `src/app.html`
 

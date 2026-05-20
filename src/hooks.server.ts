@@ -1,4 +1,4 @@
-import { connectDB } from '$lib/server/db';
+import { connectDB, disconnectDB } from '$lib/server/db';
 
 let connected = false;
 
@@ -13,3 +13,13 @@ export async function handle({ event, resolve }) {
 	}
 	return resolve(event);
 }
+
+process.on('SIGTERM', async () => {
+	await disconnectDB();
+	process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+	await disconnectDB();
+	process.exit(0);
+});
