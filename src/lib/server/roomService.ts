@@ -21,12 +21,12 @@ export interface PlayerInRoom {
 
 const rooms = new Map<string, Room>();
 
-export function createRoom(ownerName: string, maxPlayers: number = 4): Room {
-	const code = nanoid(6).toUpperCase();
+export function createRoom(ownerName: string, maxPlayers: number = 4, code?: string): Room {
+	const roomCode = code ?? nanoid(6).toUpperCase();
 	const ownerId = nanoid(10);
 	const now = Date.now();
 	const room: Room = {
-		code,
+		code: roomCode,
 		maxPlayers,
 		players: [{ id: ownerId, name: ownerName, lastSeen: now }],
 		gameState: null,
@@ -34,7 +34,7 @@ export function createRoom(ownerName: string, maxPlayers: number = 4): Room {
 		createdAt: new Date(),
 		ownerId
 	};
-	rooms.set(code, room);
+	rooms.set(roomCode, room);
 	return room;
 }
 

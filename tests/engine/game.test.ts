@@ -151,4 +151,33 @@ describe('full game flow', () => {
 		expect(state.currentPlayerIndex).toBe(1);
 		expect(state.phase).toBe('draw');
 	});
+
+	it('reshuffles discard pile when draw pile is empty', () => {
+		const state = initGame({ playerCount: 4, humanPlayerIndex: 0 });
+		state.drawPile = [];
+		state.discardPile = [
+			...Array.from({ length: 5 }, (_, i) => ({
+				suit: '♠' as Suit,
+				value: (i + 1) as Value,
+				id: `discard-${i}`,
+				isJoker: false
+			})),
+			{ suit: '♠' as Suit, value: 10 as Value, id: 'top-card', isJoker: false }
+		];
+
+		const result = drawFromPile(state);
+
+		expect(result.drawPile.length).toBe(4);
+		expect(result.discardPile).toHaveLength(1);
+		expect(result.discardPile[0].id).toBe('top-card');
+		expect(result.players[0].hand).toHaveLength(16);
+	});
+
+	it('throws when both piles are empty', () => {
+		const state = initGame({ playerCount: 4, humanPlayerIndex: 0 });
+		state.drawPile = [];
+		state.discardPile = [{ suit: '♠' as Suit, value: 10 as Value, id: 'last', isJoker: false }];
+
+		expect(() => drawFromPile(state)).toThrow('No cards left to draw');
+	});
 });

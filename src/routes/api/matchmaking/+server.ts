@@ -13,7 +13,7 @@ export async function POST({ request }) {
 		}
 		const match = result.matched;
 
-		const room = createRoom(match.player1Name, 2);
+		const room = createRoom(match.player1Name, 2, match.roomCode);
 		room.ownerId = match.player1Id;
 
 		const p2 = getRoom(match.roomCode);

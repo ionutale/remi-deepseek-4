@@ -1,5 +1,5 @@
 import type { GameState, GameConfig, PlayerState, Card } from './types';
-import { createDeck, deal } from './deck';
+import { createDeck, deal, shuffle } from './deck';
 import { canFormValidClose } from './meld';
 
 export function initGame(config: GameConfig): GameState {
@@ -25,12 +25,31 @@ export function initGame(config: GameConfig): GameState {
 	};
 }
 
+function reshuffleDiscard(discardPile: Card[]): { drawPile: Card[]; discardPile: Card[] } {
+	if (discardPile.length <= 1) return { drawPile: [], discardPile };
+	const top = discardPile[discardPile.length - 1];
+	const rest = discardPile.slice(0, -1);
+	return { drawPile: shuffle(rest), discardPile: [top] };
+}
+
 export function drawFromPile(state: GameState): GameState {
 	if (state.phase !== 'draw') {
 		throw new Error('Can only draw during draw phase');
 	}
 
-	const drawnCard = state.drawPile[state.drawPile.length - 1];
+	let drawPile = state.drawPile;
+	let discardPile = state.discardPile;
+
+	if (drawPile.length === 0) {
+		const reshuffled = reshuffleDiscard(discardPile);
+		drawPile = reshuffled.drawPile;
+		discardPile = reshuffled.discardPile;
+		if (drawPile.length === 0) {
+			throw new Error('No cards left to draw');
+		}
+	}
+
+	const drawnCard = drawPile[drawPile.length - 1];
 
 	const newPlayers = state.players.map((p, i) => {
 		if (i !== state.currentPlayerIndex) return p;
@@ -40,7 +59,8 @@ export function drawFromPile(state: GameState): GameState {
 	return {
 		...state,
 		players: newPlayers,
-		drawPile: state.drawPile.slice(0, -1),
+		drawPile: drawPile.slice(0, -1),
+		discardPile,
 		phase: 'discard'
 	};
 }
