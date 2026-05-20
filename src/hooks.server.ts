@@ -1,15 +1,14 @@
 import { connectDB, disconnectDB } from '$lib/server/db';
 
-let connected = false;
+const DB_WARN = 'MongoDB connection failed — all game state is in-memory only and will be lost on restart:';
+
+connectDB().catch((e) => console.error(DB_WARN, e));
 
 export async function handle({ event, resolve }) {
-	if (!connected) {
-		try {
-			await connectDB();
-			connected = true;
-		} catch (e) {
-			console.warn('MongoDB connection failed — using in-memory storage:', e);
-		}
+	try {
+		await connectDB();
+	} catch (e) {
+		console.error(DB_WARN, e);
 	}
 	return resolve(event);
 }

@@ -26,15 +26,15 @@
 
 11. ~~No `disconnectDB()` or cleanup hook — MongoClient is never closed on server shutdown.~~ **FIXED**: Added `disconnectDB()` in `db.ts` and `SIGTERM`/`SIGINT` handlers in `hooks.server.ts`.
 
-12. No connection retry logic — if `connectDB()` fails once during `hooks.server.ts`, the entire server starts without DB but never retries.
+12. ~~No connection retry logic — if `connectDB()` fails once during `hooks.server.ts`, the entire server starts without DB but never retries.~~ **FIXED**: Removed `connected` flag — `connectDB()` is called on every request. On failure, the next request retries. `connectDB()`'s internal ping also handles reconnection after a drop.
 
 ## `src/hooks.server.ts`
 
-13. MongoDB connection failure is logged as a warning (`console.warn`) and silently ignored — the server starts with no database, and all features silently degrade.
+13. ~~MongoDB connection failure is logged as a warning (`console.warn`) and silently ignored — the server starts with no database, and all features silently degrade.~~ **FIXED**: Upgraded to `console.error` with a message explicitly warning that game state is in-memory only and will be lost on restart. (Note: `getDB()` is never actually called in app code, so the warning reflects future risk, not current degradation.)
 
-14. `connected` flag is never reset — if MongoDB disconnects after initial success, no reconnection is attempted.
+14. ~~`connected` flag is never reset — if MongoDB disconnects after initial success, no reconnection is attempted.~~ **FIXED** (resolved alongside #12 — `connected` flag removed; `connectDB()` called on every request with internal ping-based reconnection).
 
-15. `connectDB()` is called synchronously inside `handle()` — the first request blocks on DB connection.
+15. ~~`connectDB()` is called synchronously inside `handle()` — the first request blocks on DB connection.~~ **FIXED**: Eager connection at module level starts connecting at server startup (before any request). The `handle()` call is a fast ping when already connected. Deduplicated error logging via `DB_WARN` constant.
 
 16. ~~No MongoClient `close()` on `process.on('SIGTERM')` or `SIGINT`.~~ **FIXED** (same fix as #11 — `disconnectDB()` called in both signal handlers).
 
