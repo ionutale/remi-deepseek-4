@@ -21,18 +21,18 @@ export interface PlayerInRoom {
 
 const rooms = new Map<string, Room>();
 
-export function createRoom(ownerName: string, maxPlayers: number = 4, code?: string): Room {
+export function createRoom(ownerName: string, maxPlayers: number = 4, code?: string, ownerId?: string): Room {
 	const roomCode = code ?? nanoid(6).toUpperCase();
-	const ownerId = nanoid(10);
+	const id = ownerId ?? nanoid(10);
 	const now = Date.now();
 	const room: Room = {
 		code: roomCode,
 		maxPlayers,
-		players: [{ id: ownerId, name: ownerName, lastSeen: now }],
+		players: [{ id, name: ownerName, lastSeen: now }],
 		gameState: null,
 		status: 'waiting',
 		createdAt: new Date(),
-		ownerId
+		ownerId: id
 	};
 	rooms.set(roomCode, room);
 	return room;

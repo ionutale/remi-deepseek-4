@@ -1,25 +1,22 @@
 import { json } from '@sveltejs/kit';
-import { tryMatch, getMatch, leaveQueue, getQueueSize, ensureMMR } from '$lib/server/mmr';
-import { createRoom, getRoom, startGame } from '$lib/server/roomService';
+import { tryMatch, getMatch, leaveQueue, getQueueSize, ensureMMR, isQueued } from '$lib/server/mmr';
+import { createRoom, startGame } from '$lib/server/roomService';
 
 export async function POST({ request }) {
 	const { action, playerId, playerName } = await request.json();
 
 	if (action === 'join') {
 		if (!playerName) return json({ error: 'Name required' }, { status: 400 });
+		if (!playerId) return json({ error: 'Player ID required' }, { status: 400 });
+
 		const result = tryMatch(playerId, playerName);
 		if ('queued' in result) {
 			return json({ status: 'queued', queueSize: getQueueSize() });
 		}
 		const match = result.matched;
 
-		const room = createRoom(match.player1Name, 2, match.roomCode);
-		room.ownerId = match.player1Id;
-
-		const p2 = getRoom(match.roomCode);
-		if (p2) {
-			p2.players.push({ id: match.player2Id, name: match.player2Name, lastSeen: Date.now() });
-		}
+		const room = createRoom(match.player1Name, 2, match.roomCode, match.player1Id);
+		room.players.push({ id: match.player2Id, name: match.player2Name, lastSeen: Date.now() });
 
 		ensureMMR(match.player1Id);
 		ensureMMR(match.player2Id);
@@ -48,5 +45,8 @@ export async function GET({ url }) {
 	const match = getMatch(playerId);
 	if (match) return json({ status: 'matched', roomCode: match.roomCode, match });
 
-	return json({ status: 'queued', queueSize: getQueueSize() });
+	if (isQueued(playerId)) {
+		return json({ status: 'queued', queueSize: getQueueSize() });
+	}
+	return json({ status: 'idle' });
 }

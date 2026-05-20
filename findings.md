@@ -70,15 +70,15 @@
 
 ## `src/routes/api/matchmaking/+server.ts`
 
-29. `createRoom` is called with `match.player1Name` but then `room.ownerId` is overwritten — `createRoom` already sets `ownerId` via nanoid, then it's replaced. This is a mutation side effect.
+29. ~~`createRoom` is called with `match.player1Name` but then `room.ownerId` is overwritten — `createRoom` already sets `ownerId` via nanoid, then it's replaced. This is a mutation side effect.~~ **FIXED**: `createRoom` now accepts optional `ownerId` parameter; matchmaking passes `match.player1Id` directly.
 
-30. After `createRoom`, `getRoom(match.roomCode)` is called to push player 2 — but `createRoom` already returned the room. Using `getRoom` to re-fetch is unnecessary.
+30. ~~After `createRoom`, `getRoom(match.roomCode)` is called to push player 2 — but `createRoom` already returned the room. Using `getRoom` to re-fetch is unnecessary.~~ **FIXED**: Uses room reference directly (`room.players.push(...)`) instead of re-fetching.
 
-31. `startGame(match.roomCode, match.player1Id)` is called after manually constructing the room — the `startGame` function validates `room.ownerId !== playerId`, but the owner was just overwritten to match `player1Id`, so this works coincidentally.
+31. ~~`startGame(match.roomCode, match.player1Id)` is called after manually constructing the room — the `startGame` function validates `room.ownerId !== playerId`, but the owner was just overwritten to match `player1Id`, so this works coincidentally.~~ **FIXED** (resolved alongside #29 — `ownerId` is now set correctly via `createRoom` parameter, no overwrite needed).
 
-32. No validation that `playerId` in action `join` is unique — a player could join the queue with the same ID as someone already in the queue, causing conflicts in `activeMatches`.
+32. ~~No validation that `playerId` in action `join` is unique — a player could join the queue with the same ID as someone already in the queue, causing conflicts in `activeMatches`.~~ **FIXED**: Added `if (!playerId) return error` validation in POST handler. `tryMatch` already checks for duplicate queue entries internally.
 
-33. GET handler returns `{ status: 'queued' }` even when the player is not in the queue — a player who never joined or already left will poll and see `'queued'` status.
+33. ~~GET handler returns `{ status: 'queued' }` even when the player is not in the queue — a player who never joined or already left will poll and see `'queued'` status.~~ **FIXED**: Added `isQueued()` function in mmr.ts; GET now checks queue membership and returns `'idle'` if not queued.
 
 ## `src/routes/api/matchmaking/result/+server.ts`
 

@@ -109,6 +109,10 @@ export function recordResult(winnerId: string, loserId: string): void {
 	mmrMap.set(loserId, Math.max(0, loserMMR - delta));
 }
 
+export function isQueued(playerId: string): boolean {
+	return queue.some((e) => e.playerId === playerId);
+}
+
 export function getQueueSize(): number {
 	return queue.length;
 }
