@@ -112,7 +112,7 @@ export function closeRoom(code: string, playerId: string): { error?: string } {
 }
 
 export function getAllRooms(): Room[] {
-	return Array.from(rooms.values());
+	return Array.from(rooms.values(), (r) => structuredClone(r));
 }
 
 const STALE_TIMEOUT_MS = 30_000;

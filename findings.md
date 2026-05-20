@@ -52,13 +52,13 @@
 
 ## `src/routes/api/rooms/+server.ts`
 
-22. POST handler does not validate `ownerName` type — `if (!ownerName)` passes for empty strings, objects, and arrays.
+22. ~~POST handler does not validate `ownerName` type — `if (!ownerName)` passes for empty strings, objects, and arrays.~~ **FIXED**: Added `typeof ownerName !== 'string' || ownerName.trim().length === 0` check.
 
-23. `maxPlayers` is clamped but the type assertion `as 2 | 3 | 4` is unsound — `Math.min(4, Math.max(2, undefined))` returns `2`, but `Math.min(4, Math.max(2, 100))` would return `4`, which is correct but the cast could be wrong with other inputs.
+23. ~~`maxPlayers` is clamped but the type assertion `as 2 | 3 | 4` is unsound — `Math.min(4, Math.max(2, undefined))` returns `2`, but `Math.min(4, Math.max(2, 100))` would return `4`, which is correct but the cast could be wrong with other inputs.~~ **FIXED**: Replaced `as 2 | 3 | 4` cast with ternary narrowing that TS can verify: `n <= 2 ? 2 : n >= 4 ? 4 : 3`.
 
-24. `cleanStalePlayers()` runs on every GET request — adds latency to every room listing call for maintenance that should be periodic.
+24. ~~`cleanStalePlayers()` runs on every GET request — adds latency to every room listing call for maintenance that should be periodic.~~ **FIXED** (resolved in prior work — periodic timer via `startCleanupTimer()` at module level; `STALE_TIMEOUT_MS` also bumped from 10s to 30s).
 
-25. GET returns mutable Room references — callers could mutate the in-memory state through the returned objects.
+25. ~~GET returns mutable Room references — callers could mutate the in-memory state through the returned objects.~~ **FIXED**: `getAllRooms()` now uses `structuredClone()` to return deep copies. `getRoom()` (used internally for mutations) still returns the original reference.
 
 ## `src/routes/api/rooms/[code]/+server.ts`
 
