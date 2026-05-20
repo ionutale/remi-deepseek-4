@@ -87,14 +87,6 @@ export function discardCard(state: GameState, cardId: string): GameState {
 
 	const newDiscardPile = [...state.discardPile, discardedCard];
 
-	if (newHand.length === 0) {
-		return closeGame({
-			...state,
-			players: newPlayers,
-			discardPile: newDiscardPile
-		});
-	}
-
 	return nextTurn({
 		...state,
 		players: newPlayers,

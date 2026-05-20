@@ -1,4 +1,5 @@
 import type { Card, Meld } from './types';
+import { combinations } from './utils';
 
 export function isValidSet(cards: Card[]): boolean {
 	if (cards.length < 3) return false;
@@ -45,23 +46,6 @@ export function isValidMeld(cards: Card[]): boolean {
 	return isValidSet(cards) || isValidSequence(cards);
 }
 
-function combinations(arr: Card[], size: number): Card[][] {
-	if (size === 0) return [[]];
-	if (arr.length < size) return [];
-
-	const result: Card[][] = [];
-	const [first, ...rest] = arr;
-
-	for (const combo of combinations(rest, size - 1)) {
-		result.push([first, ...combo]);
-	}
-	for (const combo of combinations(rest, size)) {
-		result.push(combo);
-	}
-
-	return result;
-}
-
 function findAllMelds(hand: Card[]): Meld[] {
 	const melds: Meld[] = [];
 	const seen = new Set<string>();
@@ -86,9 +70,20 @@ function findAllMelds(hand: Card[]): Meld[] {
 	return melds;
 }
 
-function partitionHand(remaining: Set<string>, allMelds: Meld[], current: Meld[]): Meld[][] | null {
+function partitionHand(
+	remaining: Set<string>,
+	allMelds: Meld[],
+	current: Meld[],
+	hasSet: boolean,
+	hasSequence: boolean,
+	requireSet: boolean,
+	requireSequence: boolean
+): Meld[][] | null {
 	if (remaining.size === 0) {
-		return [current];
+		if ((!requireSet || hasSet) && (!requireSequence || hasSequence)) {
+			return [current];
+		}
+		return null;
 	}
 
 	const firstId = remaining.values().next().value;
@@ -102,7 +97,15 @@ function partitionHand(remaining: Set<string>, allMelds: Meld[], current: Meld[]
 		}
 		current.push(meld);
 
-		const result = partitionHand(remaining, allMelds, current);
+		const result = partitionHand(
+			remaining,
+			allMelds,
+			current,
+			hasSet || meld.type === 'set',
+			hasSequence || meld.type === 'sequence',
+			requireSet,
+			requireSequence
+		);
 		if (result) return result;
 
 		for (const c of meld.cards) {
@@ -121,14 +124,9 @@ export function findBestMelds(
 ): Meld[][] | null {
 	const allMelds = findAllMelds(hand);
 	const cardIds = new Set(hand.map((c) => c.id));
-	const partition = partitionHand(cardIds, allMelds, []);
-
-	if (!partition) return null;
-
-	const melds = partition[0];
-	if (requiredSet && !melds.some((m) => m.type === 'set')) return null;
-	if (requiredSequence && !melds.some((m) => m.type === 'sequence')) return null;
-
+	const requireSet = requiredSet ?? false;
+	const requireSequence = requiredSequence ?? false;
+	const partition = partitionHand(cardIds, allMelds, [], false, false, requireSet, requireSequence);
 	return partition;
 }
 

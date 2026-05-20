@@ -242,4 +242,26 @@ describe('canFormValidClose', () => {
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
+
+	it('accepts hand where first partition is all-sets but mixed partition exists', () => {
+		const hand = [
+			c('♠', 5), c('♥', 5), c('♦', 5),
+			c('♠', 6), c('♥', 6), c('♦', 6),
+			c('♠', 7), c('♥', 7), c('♦', 7),
+			c('♠', 8), c('♥', 8), c('♦', 8),
+			c('♠', 9), c('♥', 9), c('♦', 9)
+		];
+		expect(canFormValidClose(hand)).toBe(true);
+	});
+
+	it('accepts hand where first partition is all-sequences but mixed partition exists', () => {
+		const hand = [
+			c('♠', 5), c('♠', 6), c('♠', 7),
+			c('♥', 5), c('♥', 6), c('♥', 7),
+			c('♦', 5), c('♦', 6), c('♦', 7),
+			c('♣', 5), c('♣', 6), c('♣', 7),
+			c('♠', 9), c('♠', 10), c('♠', 11)
+		];
+		expect(canFormValidClose(hand)).toBe(true);
+	});
 });

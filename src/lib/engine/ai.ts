@@ -1,23 +1,7 @@
 import type { Card, GameState } from './types';
 import { isValidMeld, canFormValidClose } from './meld';
 import { drawFromDiscard, drawFromPile, discardCard, closeGame } from './game';
-
-function combinations(arr: Card[], size: number): Card[][] {
-	if (size === 0) return [[]];
-	if (arr.length < size) return [];
-
-	const result: Card[][] = [];
-	const [first, ...rest] = arr;
-
-	for (const combo of combinations(rest, size - 1)) {
-		result.push([first, ...combo]);
-	}
-	for (const combo of combinations(rest, size)) {
-		result.push(combo);
-	}
-
-	return result;
-}
+import { combinations } from './utils';
 
 function hasMeldContaining(cards: Card[], target: Card): boolean {
 	for (let size = 3; size <= cards.length; size++) {
