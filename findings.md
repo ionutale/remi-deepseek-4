@@ -82,11 +82,11 @@
 
 ## `src/routes/api/matchmaking/result/+server.ts`
 
-34. `winnerIdx == null` uses loose equality (`==` instead of `===`) — works for both `null` and `undefined` but inconsistent with the rest of the codebase.
+34. ~~`winnerIdx == null` uses loose equality (`==` instead of `===`) — works for both `null` and `undefined` but inconsistent with the rest of the codebase.~~ **FIXED**: `winnerIdx === null` in result handler (resolved prior). Also fixed `state.winner != null` → `state.winner !== null` in `roomService.ts:95`.
 
-35. `recordResult` is called with `winnerId` and `loserId` but the function also calls `ensureMMR` — it's called twice (once here, once depends on path).
+35. ~~`recordResult` is called with `winnerId` and `loserId` but the function also calls `ensureMMR` — it's called twice (once here, once depends on path).~~ **FIXED**: Removed redundant `ensureMMR` calls from matchmaking POST handler; `recordResult` handles it internally.
 
-36. MMR results are computed but `matchStore.recordResult` in the client calls this endpoint and gets MMR values, but the UI never displays them.
+36. MMR results are computed but `matchStore.recordResult` in the client calls this endpoint and gets MMR values, but the UI never displays them. *(feature gap — API returns MMR values but no UI component renders them; requires frontend work)*
 
 ## `src/lib/server/roomService.ts`
 

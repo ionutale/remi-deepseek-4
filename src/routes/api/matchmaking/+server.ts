@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { tryMatch, getMatch, leaveQueue, getQueueSize, ensureMMR, isQueued } from '$lib/server/mmr';
+import { tryMatch, getMatch, leaveQueue, getQueueSize, isQueued } from '$lib/server/mmr';
 import { createRoom, startGame } from '$lib/server/roomService';
 
 export async function POST({ request }) {
@@ -17,9 +17,6 @@ export async function POST({ request }) {
 
 		const room = createRoom(match.player1Name, 2, match.roomCode, match.player1Id);
 		room.players.push({ id: match.player2Id, name: match.player2Name, lastSeen: Date.now() });
-
-		ensureMMR(match.player1Id);
-		ensureMMR(match.player2Id);
 
 		startGame(match.roomCode, match.player1Id);
 

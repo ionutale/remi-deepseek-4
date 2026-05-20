@@ -92,7 +92,7 @@ export function updateGameState(code: string, state: GameState): { error?: strin
 	room.gameState = state;
 	if (state.phase === 'finished') {
 		room.status = 'finished';
-		if (room.players.length === 2 && state.winner != null) {
+		if (room.players.length === 2 && state.winner !== null) {
 			const winnerId = room.players[state.winner].id;
 			const loserId = room.players[1 - state.winner].id;
 			recordResult(winnerId, loserId);
