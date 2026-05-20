@@ -115,7 +115,7 @@ export function getAllRooms(): Room[] {
 	return Array.from(rooms.values());
 }
 
-const STALE_TIMEOUT_MS = 10_000;
+const STALE_TIMEOUT_MS = 30_000;
 
 export function pingPlayer(code: string, playerId: string): void {
 	const room = rooms.get(code.toUpperCase());
@@ -137,3 +137,17 @@ export function cleanStalePlayers(): void {
 		}
 	}
 }
+
+const CLEANUP_INTERVAL_MS = 15_000;
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+export function startCleanupTimer(): void {
+	if (cleanupTimer) return;
+	cleanupTimer = setInterval(cleanStalePlayers, CLEANUP_INTERVAL_MS);
+}
+export function stopCleanupTimer(): void {
+	if (cleanupTimer) {
+		clearInterval(cleanupTimer);
+		cleanupTimer = null;
+	}
+}
+startCleanupTimer();

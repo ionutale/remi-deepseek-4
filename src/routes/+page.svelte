@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { createRoom, joinRoom } from '$lib/stores/roomStore';
 	import {
 		quickJoin,
@@ -26,7 +27,7 @@
 
 	onDestroy(() => {
 		stopPolling();
-		leaveQueue();
+		if (browser) leaveQueue();
 	});
 
 	function startPolling() {

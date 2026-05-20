@@ -19,10 +19,9 @@ export interface Meld {
 export interface PlayerState {
 	hand: Card[];
 	melds: Meld[];
-	hasOpened: boolean;
 }
 
-export type GamePhase = 'idle' | 'draw' | 'discard' | 'closing' | 'finished';
+export type GamePhase = 'idle' | 'draw' | 'discard' | 'finished';
 
 export interface GameState {
 	players: PlayerState[];

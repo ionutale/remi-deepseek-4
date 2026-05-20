@@ -48,7 +48,12 @@ export async function PATCH({ params, request }) {
 }
 
 export async function PUT({ params, request }) {
-	const { gameState } = await request.json();
+	const { playerId, gameState } = await request.json();
+	const room = getRoom(params.code);
+	if (!room) return json({ error: 'Room not found' }, { status: 404 });
+	if (!room.players.some((p) => p.id === playerId)) {
+		return json({ error: 'Not a player in this room' }, { status: 403 });
+	}
 	const result = updateGameState(params.code, gameState);
 	if (result.error) return json(result, { status: 400 });
 	return json({ ok: true });

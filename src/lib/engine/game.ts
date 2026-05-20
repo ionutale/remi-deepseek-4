@@ -8,8 +8,7 @@ export function initGame(config: GameConfig): GameState {
 
 	const players: PlayerState[] = hands.map((hand) => ({
 		hand,
-		melds: [],
-		hasOpened: false
+		melds: []
 	}));
 
 	const discardPile: Card[] = [remaining[0]];

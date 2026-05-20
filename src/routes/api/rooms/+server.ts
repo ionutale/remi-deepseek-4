@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { createRoom, getAllRooms, cleanStalePlayers } from '$lib/server/roomService';
+import { createRoom, getAllRooms } from '$lib/server/roomService';
 
 export async function POST({ request }) {
 	const { ownerName, maxPlayers } = await request.json();
@@ -10,6 +10,5 @@ export async function POST({ request }) {
 }
 
 export async function GET() {
-	cleanStalePlayers();
 	return json(getAllRooms());
 }

@@ -13,7 +13,7 @@ export async function POST({ request }) {
 		return json({ error: 'Only 1v1 matches are rated' }, { status: 400 });
 
 	const winnerIdx = room.gameState.winner;
-	if (winnerIdx == null) return json({ error: 'No winner' }, { status: 400 });
+	if (winnerIdx === null) return json({ error: 'No winner' }, { status: 400 });
 
 	const winnerId = room.players[winnerIdx].id;
 	const loserId = room.players[1 - winnerIdx].id;

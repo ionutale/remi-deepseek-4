@@ -16,6 +16,7 @@
 		reset
 	} from '$lib/stores/roomStore';
 	import { canFormValidClose } from '$lib/engine/meld';
+	import { drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
 	import { derived } from 'svelte/store';
 
 	let code = $derived($page.params.code);
@@ -62,7 +63,6 @@
 	async function handleDrawPile() {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const { drawFromPile } = await import('$lib/engine/game');
 		const newState = drawFromPile(gs);
 		await sendGameState(newState);
 	}
@@ -70,7 +70,6 @@
 	async function handleDrawDiscard() {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const { drawFromDiscard } = await import('$lib/engine/game');
 		const newState = drawFromDiscard(gs);
 		await sendGameState(newState);
 	}
@@ -78,7 +77,6 @@
 	async function handleDiscard(cardId: string) {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const { discardCard } = await import('$lib/engine/game');
 		const newState = discardCard(gs, cardId);
 		await sendGameState(newState);
 	}
@@ -86,7 +84,6 @@
 	async function handleClose() {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const { closeGame } = await import('$lib/engine/game');
 		const newState = closeGame(gs);
 		await sendGameState(newState);
 	}
@@ -102,7 +99,8 @@
 
 	function cardLabel(c: { value: number; suit: string; isJoker?: boolean }) {
 		if (c.isJoker) return '★';
-		return `${c.value}${c.suit}`;
+		const face: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+		return `${face[c.value] ?? c.value}${c.suit}`;
 	}
 </script>
 
@@ -227,8 +225,8 @@
 
 					<div class="flex w-full justify-between text-xs text-base-content/40">
 						<span>Phase: {$gamePhase}</span>
-						<span>You: Player {$myIndex}</span>
-						<span>Current: Player {$currentGameState.currentPlayerIndex}</span>
+						<span>You: Player {$myIndex + 1}</span>
+						<span>Current: Player {$currentGameState.currentPlayerIndex + 1}</span>
 					</div>
 				</div>
 			</div>
@@ -238,7 +236,7 @@
 			<div class="card bg-base-100 shadow-xl">
 				<div class="card-body items-center gap-4 text-center">
 					<h2 class="text-3xl font-bold text-accent">Game Over</h2>
-					<p class="text-lg">Winner: Player {$currentGameState.winner}</p>
+					<p class="text-lg">Winner: Player {($currentGameState.winner ?? -1) + 1}</p>
 
 					{#if $isOwner}
 						<button class="btn w-full btn-primary" onclick={restartGame}>Play Again</button>

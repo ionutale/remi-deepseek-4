@@ -1,14 +1,19 @@
 import { MongoClient, type Db } from 'mongodb';
-
-const MONGODB_URL = process.env.MONGODB_URL!;
-const MONGODB_DB = process.env.MONGODB_DB!;
+import { MONGODB_URL, MONGODB_DB } from '$env/static/private';
 
 let client: MongoClient;
 let db: Db;
 
 export async function connectDB(): Promise<Db> {
+	if (!MONGODB_URL) throw new Error('MONGODB_URL not set in .env');
+	if (!MONGODB_DB) throw new Error('MONGODB_DB not set in .env');
 	if (db) return db;
-	client = new MongoClient(MONGODB_URL);
+	client = new MongoClient(MONGODB_URL, {
+		maxPoolSize: 10,
+		serverSelectionTimeoutMS: 5000,
+		connectTimeoutMS: 5000,
+		retryWrites: true
+	});
 	await client.connect();
 	db = client.db(MONGODB_DB);
 	return db;
