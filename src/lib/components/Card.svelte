@@ -6,13 +6,17 @@
 		faceDown = false,
 		selected = false,
 		clickable = false,
-		onselect
+		draggable = false,
+		onselect,
+		ondragstart
 	}: {
 		card: Card;
 		faceDown?: boolean;
 		selected?: boolean;
 		clickable?: boolean;
+		draggable?: boolean;
 		onselect?: (cardId: string) => void;
+		ondragstart?: (e: DragEvent) => void;
 	} = $props();
 
 	let isRed = $derived(card.suit === '♥' || card.suit === '♦');
@@ -30,6 +34,12 @@
 							? 'K'
 							: String(card.value)
 	);
+
+	function handleDragStart(e: DragEvent) {
+		e.dataTransfer?.setData('text/card-id', card.id);
+		e.dataTransfer!.effectAllowed = 'move';
+		ondragstart?.(e);
+	}
 </script>
 
 <button
@@ -38,6 +48,8 @@
 		: ''} {clickable
 		? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg'
 		: 'cursor-default'} {!clickable ? 'opacity-60' : ''}"
+	{draggable}
+	ondragstart={handleDragStart}
 	onclick={() => onselect?.(card.id)}
 	disabled={!clickable}
 >

@@ -1,0 +1,52 @@
+import { json } from '@sveltejs/kit';
+import { tryMatch, getMatch, leaveQueue, getQueueSize, ensureMMR } from '$lib/server/mmr';
+import { createRoom, getRoom, startGame } from '$lib/server/roomService';
+
+export async function POST({ request }) {
+	const { action, playerId, playerName } = await request.json();
+
+	if (action === 'join') {
+		if (!playerName) return json({ error: 'Name required' }, { status: 400 });
+		const result = tryMatch(playerId, playerName);
+		if ('queued' in result) {
+			return json({ status: 'queued', queueSize: getQueueSize() });
+		}
+		const match = result.matched;
+
+		const room = createRoom(match.player1Name, 2);
+		room.ownerId = match.player1Id;
+
+		const p2 = getRoom(match.roomCode);
+		if (p2) {
+			p2.players.push({ id: match.player2Id, name: match.player2Name, lastSeen: Date.now() });
+		}
+
+		ensureMMR(match.player1Id);
+		ensureMMR(match.player2Id);
+
+		startGame(match.roomCode, match.player1Id);
+
+		return json({
+			status: 'matched',
+			roomCode: match.roomCode,
+			match
+		});
+	}
+
+	if (action === 'leave') {
+		leaveQueue(playerId);
+		return json({ ok: true });
+	}
+
+	return json({ error: 'Unknown action' }, { status: 400 });
+}
+
+export async function GET({ url }) {
+	const playerId = url.searchParams.get('playerId');
+	if (!playerId) return json({ queueSize: getQueueSize() });
+
+	const match = getMatch(playerId);
+	if (match) return json({ status: 'matched', roomCode: match.roomCode, match });
+
+	return json({ status: 'queued', queueSize: getQueueSize() });
+}

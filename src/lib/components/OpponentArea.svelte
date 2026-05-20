@@ -13,7 +13,9 @@
 <div class="flex justify-center gap-4 p-4 sm:gap-8">
 	{#each opponents as opponent, i (i)}
 		<div class="flex flex-col items-center gap-2">
-			<div class="badge badge-lg {i + 1 === currentPlayerIndex ? 'badge-primary' : 'badge-ghost'}">
+			<div
+				class="badge badge-lg {i + 1 === currentPlayerIndex ? 'badge-primary' : 'badge-neutral'}"
+			>
 				Player {i + 2}
 			</div>
 			<div class="flex -space-x-3">
