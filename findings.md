@@ -62,11 +62,11 @@
 
 ## `src/routes/api/rooms/[code]/+server.ts`
 
-26. PUT handler extracts `gameState` but ignores `playerId` — no ownership verification for game state updates.
+26. ~~PUT handler extracts `gameState` but ignores `playerId` — no ownership verification for game state updates.~~ **FIXED** (resolved in prior work — PUT now checks `room.players.some(p => p.id === playerId)`).
 
-27. PATCH `action` switch does not validate `playerName` presence for the `join` action — could crash downstream.
+27. ~~PATCH `action` switch does not validate `playerName` presence for the `join` action — could crash downstream.~~ **FIXED**: Added `typeof playerName !== 'string' || playerName.trim().length === 0` validation before `joinRoom` call.
 
-28. GET silently ignores missing `room` on ping — `getRoom` returns undefined, `pingPlayer` returns early, then `json(undefined)` returns `null`.
+28. ~~GET silently ignores missing `room` on ping — `getRoom` returns undefined, `pingPlayer` returns early, then `json(undefined)` returns `null`.~~ **FIXED** (resolved in prior work — GET now returns 404 if room not found before pinging).
 
 ## `src/routes/api/matchmaking/+server.ts`
 

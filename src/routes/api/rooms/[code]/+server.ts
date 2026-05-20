@@ -23,7 +23,10 @@ export async function PATCH({ params, request }) {
 
 	switch (action) {
 		case 'join': {
-			const result = joinRoom(code, playerName);
+			if (typeof playerName !== 'string' || playerName.trim().length === 0) {
+				return json({ error: 'Name required' }, { status: 400 });
+			}
+			const result = joinRoom(code, playerName.trim());
 			if ('error' in result) return json(result, { status: 400 });
 			return json(result);
 		}
