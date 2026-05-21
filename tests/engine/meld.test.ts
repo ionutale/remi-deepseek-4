@@ -79,22 +79,13 @@ describe('isValidMeld', () => {
 
 describe('canFormValidClose', () => {
 	it('accepts valid hand with sets and sequences (15 cards)', () => {
+		// 4 melds (14 cards) + K♥ as spare (no other Kings or consecutive ♥ in hand)
 		const hand = [
-			c('♠', 5),
-			c('♥', 5),
-			c('♦', 5),
-			c('♠', 7),
-			c('♥', 7),
-			c('♦', 7),
-			c('♠', 9),
-			c('♥', 9),
-			c('♦', 9),
-			c('♠', 10),
-			c('♠', 11),
-			c('♠', 12),
-			c('♣', 3),
-			c('♣', 4),
-			c('♣', 5)
+			c('♠', 5), c('♥', 5), c('♦', 5),               // set of 5s (3)
+			c('♠', 7), c('♥', 7), c('♦', 7), c('♣', 7),    // set of 7s (4)
+			c('♠', 10), c('♠', 11), c('♠', 12),             // sequence 10-12♠ (3)
+			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),    // sequence 3-6♣ (4)
+			c('♥', 13)                                        // spare K♥
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -142,22 +133,13 @@ describe('canFormValidClose', () => {
 	});
 
 	it('accepts valid hand with jokers filling gaps', () => {
+		// 4 melds (14 cards) using one joker + second joker as spare
 		const hand = [
-			c('♠', 5),
-			c('♥', 5),
-			c('♦', 5),
-			c('♠', 7),
-			c('♥', 7),
-			c('♦', 7),
-			c('♠', 9),
-			c('♠', 10),
-			c('♠', 0 as Value, true),
-			c('♣', 3),
-			c('♣', 4),
-			c('♣', 5),
-			c('♠', 0 as Value, true),
-			c('♥', 2),
-			c('♦', 2)
+			c('♠', 5), c('♥', 5), c('♦', 5),                      // set of 5s (3)
+			c('♠', 7), c('♥', 7), c('♦', 7), c('♣', 7),           // set of 7s (4)
+			c('♠', 9), c('♠', 10), c('♠', 0 as Value, true),       // seq 9-10-[11]♠ via joker (3)
+			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),           // sequence 3-6♣ (4)
+			c('♠', 0 as Value, true)                                 // spare joker
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -224,22 +206,15 @@ describe('canFormValidClose', () => {
 	});
 
 	it('accepts valid hand with multiple valid partition possibilities', () => {
+		// 14 cards admit two valid partitions; 15th (J♥) is the spare
+		// Partition A: {5s set} {7s set} {9-12♠ seq} {2-4♣ seq}
+		// Partition B (via 5♣,6♣): {5♣,6♣,7♣?,..} — drives the algorithm to backtrack
 		const hand = [
-			c('♠', 5),
-			c('♥', 5),
-			c('♦', 5),
-			c('♠', 7),
-			c('♥', 7),
-			c('♦', 7),
-			c('♠', 9),
-			c('♥', 9),
-			c('♦', 9),
-			c('♠', 10),
-			c('♠', 11),
-			c('♠', 12),
-			c('♣', 2),
-			c('♣', 3),
-			c('♣', 4)
+			c('♠', 5), c('♥', 5), c('♦', 5), c('♣', 5),    // set of 5s (4)
+			c('♠', 7), c('♥', 7), c('♦', 7),                 // set of 7s (3)
+			c('♠', 9), c('♠', 10), c('♠', 11), c('♠', 12),   // sequence 9-12♠ (4)
+			c('♣', 2), c('♣', 3), c('♣', 4),                  // sequence 2-4♣ (3)
+			c('♥', 11)                                          // spare J♥
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});

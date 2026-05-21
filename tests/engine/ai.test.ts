@@ -69,22 +69,23 @@ describe('aiTurn', () => {
 
 	it('closes the game when hand is winning', () => {
 		const state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
+		// 4 melds (14 cards) + K♥ spare — valid Romanian close
 		const winningHand: Card[] = [
 			{ suit: '♠', value: 5, id: 'i1', isJoker: false },
 			{ suit: '♥', value: 5, id: 'i2', isJoker: false },
 			{ suit: '♦', value: 5, id: 'i3', isJoker: false },
-			{ suit: '♠', value: 7, id: 'i4', isJoker: false },
-			{ suit: '♥', value: 7, id: 'i5', isJoker: false },
-			{ suit: '♦', value: 7, id: 'i6', isJoker: false },
-			{ suit: '♠', value: 9, id: 'i7', isJoker: false },
-			{ suit: '♥', value: 9, id: 'i8', isJoker: false },
-			{ suit: '♦', value: 9, id: 'i9', isJoker: false },
-			{ suit: '♠', value: 10, id: 'i10', isJoker: false },
-			{ suit: '♠', value: 11, id: 'i11', isJoker: false },
-			{ suit: '♠', value: 12, id: 'i12', isJoker: false },
-			{ suit: '♣', value: 2, id: 'i13', isJoker: false },
-			{ suit: '♣', value: 3, id: 'i14', isJoker: false },
-			{ suit: '♣', value: 4, id: 'i15', isJoker: false }
+			{ suit: '♣', value: 5, id: 'i4', isJoker: false },  // set of 5s (4)
+			{ suit: '♠', value: 7, id: 'i5', isJoker: false },
+			{ suit: '♥', value: 7, id: 'i6', isJoker: false },
+			{ suit: '♦', value: 7, id: 'i7', isJoker: false },   // set of 7s (3)
+			{ suit: '♠', value: 10, id: 'i8', isJoker: false },
+			{ suit: '♠', value: 11, id: 'i9', isJoker: false },
+			{ suit: '♠', value: 12, id: 'i10', isJoker: false },  // sequence 10-12♠ (3)
+			{ suit: '♣', value: 3, id: 'i11', isJoker: false },
+			{ suit: '♣', value: 4, id: 'i12', isJoker: false },
+			{ suit: '♣', value: 5, id: 'i13', isJoker: false },
+			{ suit: '♣', value: 6, id: 'i14', isJoker: false },   // sequence 3-6♣ (4)
+			{ suit: '♥', value: 13, id: 'i15', isJoker: false }   // spare K♥
 		];
 		state.players[1].hand = winningHand;
 		state.currentPlayerIndex = 1;

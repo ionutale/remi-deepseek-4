@@ -11,7 +11,8 @@
 		oncarddrop,
 		onmelddrop,
 		oncardmovetomeld,
-		oncardback
+		oncardback,
+		onsuggest
 	}: {
 		melds: (Meld | null)[];
 		ondragstart?: (e: DragEvent, meldIndex: number) => void;
@@ -19,6 +20,7 @@
 		onmelddrop?: (e: DragEvent, fromIndex: number, toIndex: number) => void;
 		oncardmovetomeld?: (cardId: string, toSlotIndex: number) => void;
 		oncardback?: (cardId: string) => void;
+		onsuggest?: () => void;
 	} = $props();
 
 	const rows = $derived(Math.ceil(melds.length / COLS));
@@ -82,6 +84,20 @@
 	class="w-full rounded-2xl p-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.4),0_4px_16px_rgba(0,0,0,0.5)]"
 	style="background: linear-gradient(160deg, #6b3f1f 0%, #8b5a2b 40%, #7a4e22 70%, #5c3317 100%);"
 >
+	<!-- Header row: label + organize button -->
+	<div class="mb-2 flex items-center justify-between px-1">
+		<span class="text-[11px] font-medium tracking-widest text-amber-200/40 uppercase">Meld Board</span>
+		{#if onsuggest}
+			<button
+				class="flex items-center gap-1 rounded-md border border-amber-200/20 bg-amber-200/10 px-2 py-0.5 text-[11px] font-medium text-amber-200/70 transition hover:border-amber-300/50 hover:bg-amber-200/20 hover:text-amber-100 active:scale-95"
+				onclick={onsuggest}
+				title="Auto-group hand into likely melds and partial formations"
+			>
+				⚙ Organize
+			</button>
+		{/if}
+	</div>
+
 	<!-- Top rail shadow line -->
 	<div class="mb-2 h-px w-full rounded-full opacity-40" style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"></div>
 

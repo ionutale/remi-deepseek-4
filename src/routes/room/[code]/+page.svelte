@@ -16,7 +16,7 @@
 		sendGameState,
 		reset
 	} from '$lib/stores/roomStore';
-	import { canFormValidClose } from '$lib/engine/meld';
+	import { canFormValidClose, suggestMelds } from '$lib/engine/meld';
 	import { HAND_SIZE } from '$lib/engine/deck';
 	import { drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
 	import type { Card, MeldType } from '$lib/engine/types';
@@ -93,12 +93,9 @@
 			canFormValidClose($myHand)
 	);
 
-	// Clear staging when it stops being my turn
+	// Clear selected card when the discard phase ends
 	$effect(() => {
-		if (!$isMyTurn) {
-			meldSlots = Array.from({ length: MAX_MELD_SLOTS }, () => []);
-			selectedCardId = null;
-		}
+		if ($gamePhase !== 'discard') selectedCardId = null;
 	});
 
 	// — Meld slot helpers —
@@ -134,6 +131,14 @@
 				meldSlots[toSlotIndex] = [...meldSlots[toSlotIndex], card];
 				return;
 			}
+		}
+	}
+
+	function handleSuggest() {
+		const suggestions = suggestMelds($myHand);
+		meldSlots = Array.from({ length: MAX_MELD_SLOTS }, () => []);
+		for (let i = 0; i < suggestions.length && i < MAX_MELD_SLOTS; i++) {
+			meldSlots[i] = suggestions[i];
 		}
 	}
 
@@ -319,6 +324,7 @@
 					onmelddrop={(_e, from, to) => moveMeld(from, to)}
 					oncardmovetomeld={(cardId, to) => moveCardToSlot(cardId, to)}
 					oncardback={(id) => removeCardFromSlot(id)}
+					onsuggest={handleSuggest}
 				/>
 			</div>
 

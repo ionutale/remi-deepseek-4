@@ -139,9 +139,81 @@ export function findBestMelds(
 	return partition;
 }
 
+/**
+ * Greedy meld suggester. Returns card groups to populate meld slots:
+ * 1. Complete valid melds (≥3 cards), largest first.
+ * 2. Incomplete sets: 2+ cards of the same value.
+ * 3. Incomplete sequences: 2+ consecutive cards of the same suit.
+ * Cards already accounted for in step N are excluded from step N+1.
+ */
+export function suggestMelds(hand: Card[]): Card[][] {
+	const groups: Card[][] = [];
+	const used = new Set<string>();
+
+	// Step 1 — complete valid melds, greedy largest-first
+	const allValid = findAllMelds(hand);
+	allValid.sort((a, b) => b.cards.length - a.cards.length);
+	for (const meld of allValid) {
+		if (meld.cards.some((c) => used.has(c.id))) continue;
+		groups.push([...meld.cards]);
+		for (const c of meld.cards) used.add(c.id);
+	}
+
+	// Step 2 — incomplete sets: 2+ of same value
+	const remaining = hand.filter((c) => !used.has(c.id) && !c.isJoker);
+	const byValue = new Map<number, Card[]>();
+	for (const c of remaining) {
+		const bucket = byValue.get(c.value) ?? [];
+		bucket.push(c);
+		byValue.set(c.value, bucket);
+	}
+	for (const [, cards] of byValue) {
+		if (cards.length >= 2) {
+			groups.push(cards);
+			for (const c of cards) used.add(c.id);
+		}
+	}
+
+	// Step 3 — incomplete sequences: 2+ consecutive same-suit
+	const leftover = hand.filter((c) => !used.has(c.id) && !c.isJoker);
+	const bySuit = new Map<string, Card[]>();
+	for (const c of leftover) {
+		const bucket = bySuit.get(c.suit) ?? [];
+		bucket.push(c);
+		bySuit.set(c.suit, bucket);
+	}
+	for (const [, cards] of bySuit) {
+		const sorted = [...cards].sort((a, b) => a.value - b.value);
+		let run: Card[] = [sorted[0]];
+		for (let i = 1; i < sorted.length; i++) {
+			if (sorted[i].value === run[run.length - 1].value + 1) {
+				run.push(sorted[i]);
+			} else {
+				if (run.length >= 2) {
+					groups.push(run);
+					for (const c of run) used.add(c.id);
+				}
+				run = [sorted[i]];
+			}
+		}
+		if (run.length >= 2) {
+			groups.push(run);
+			for (const c of run) used.add(c.id);
+		}
+	}
+
+	return groups;
+}
+
+/**
+ * Romanian Remi closing rule: 14 of the 15 cards (after drawing) must form
+ * valid melds (≥1 set + ≥1 sequence). The leftover card is discarded on close.
+ */
 export function canFormValidClose(hand: Card[]): boolean {
 	if (hand.length !== HAND_SIZE + 1) return false;
-
-	const result = findBestMelds(hand, true, true);
-	return result !== null;
+	for (let i = 0; i < hand.length; i++) {
+		const remaining = hand.filter((_, j) => j !== i);
+		if (findBestMelds(remaining, true, true) !== null) return true;
+	}
+	return false;
 }

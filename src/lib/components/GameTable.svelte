@@ -8,7 +8,7 @@
 		playerDiscard,
 		playerClose
 	} from '$lib/stores/gameStore';
-	import { canFormValidClose } from '$lib/engine/meld';
+	import { canFormValidClose, suggestMelds } from '$lib/engine/meld';
 	import { HAND_SIZE } from '$lib/engine/deck';
 	import type { Card, MeldType } from '$lib/engine/types';
 	import PlayerHand from './PlayerHand.svelte';
@@ -131,6 +131,14 @@
 		if (cardId) removeCardFromSlot(cardId);
 	}
 
+	function handleSuggest() {
+		const suggestions = suggestMelds(humanHand);
+		meldSlots = Array.from({ length: MAX_MELD_SLOTS }, () => []);
+		for (let i = 0; i < suggestions.length && i < MAX_MELD_SLOTS; i++) {
+			meldSlots[i] = suggestions[i];
+		}
+	}
+
 	function handleCardMoveToSlot(cardId: string, toSlotIndex: number) {
 		for (let i = 0; i < meldSlots.length; i++) {
 			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
@@ -200,6 +208,7 @@
 			onmelddrop={(e, f, t) => handleMeldDrop(e, f, t)}
 			oncardmovetomeld={(cardId, to) => handleCardMoveToSlot(cardId, to)}
 			oncardback={(id) => handleCardBack(id)}
+			onsuggest={handleSuggest}
 		/>
 	</div>
 
