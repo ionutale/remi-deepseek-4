@@ -9,7 +9,7 @@ export interface Room {
 	players: PlayerInRoom[];
 	gameState: GameState | null;
 	status: 'waiting' | 'playing' | 'finished';
-	createdAt: Date;
+	createdAt: number;
 	ownerId: string;
 }
 
@@ -31,7 +31,7 @@ export function createRoom(ownerName: string, maxPlayers: number = 4, code?: str
 		players: [{ id, name: ownerName, lastSeen: now }],
 		gameState: null,
 		status: 'waiting',
-		createdAt: new Date(),
+		createdAt: Date.now(),
 		ownerId: id
 	};
 	rooms.set(roomCode, room);
@@ -133,7 +133,9 @@ export function cleanStalePlayers(): void {
 		if (room.players.length === 0) {
 			rooms.delete(code);
 		} else if (room.players.length < before && !room.players.some((p) => p.id === room.ownerId)) {
-			room.ownerId = room.players[0].id;
+			const newOwner = room.players[0];
+			console.warn(`Room ${code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`);
+			room.ownerId = newOwner.id;
 		}
 	}
 }

@@ -90,23 +90,23 @@
 
 ## `src/lib/server/roomService.ts`
 
-37. In-memory `Map<string, Room>` loses all rooms on server restart — no persistence for ongoing games.
+37. In-memory `Map<string, Room>` loses all rooms on server restart — no persistence for ongoing games. *(design constraint — requires DB-backed storage to fix; MongoDB connection is configured but unused in app code)*
 
-38. `STALE_TIMEOUT_MS = 10_000` evicts players after only 10 seconds of inactivity — far too aggressive for real gameplay where a player might tab away for a moment.
+38. ~~`STALE_TIMEOUT_MS = 10_000` evicts players after only 10 seconds of inactivity — far too aggressive for real gameplay where a player might tab away for a moment.~~ **FIXED** (resolved in prior work — bumped to `30_000`).
 
-39. `cleanStalePlayers()` only runs on `GET /api/rooms` — polling the room API is required to trigger cleanup. No periodic timer.
+39. ~~`cleanStalePlayers()` only runs on `GET /api/rooms` — polling the room API is required to trigger cleanup. No periodic timer.~~ **FIXED** (resolved in prior work — `startCleanupTimer()` runs at module level every 15s).
 
-40. `cleanStalePlayers()` transfers ownership when the owner is stale: `room.ownerId = room.players[0].id` — silently changes ownership without notifying the new owner.
+40. ~~`cleanStalePlayers()` transfers ownership when the owner is stale: `room.ownerId = room.players[0].id` — silently changes ownership without notifying the new owner.~~ **FIXED**: Added `console.warn` log when ownership is transferred, identifying the new owner.
 
-41. `updateGameState` hardcodes `1 - state.winner` for two-player MMR — crashes or produces wrong results for 3+ player games where the winner could be index 0 and loser is undetermined.
+41. `updateGameState` hardcodes `1 - state.winner` for two-player MMR — crashes or produces wrong results for 3+ player games where the winner could be index 0 and loser is undetermined. *(guarded by `room.players.length === 2` check; MMR simply isn't recorded for 3+ player games — no crash, but a design limitation)*
 
-42. `closeRoom` does not validate the caller's `playerId` properly — only checks `room.ownerId !== playerId`, but other players could still disrupt the game.
+42. `closeRoom` does not validate the caller's `playerId` properly — only checks `room.ownerId !== playerId`, but other players could still disrupt the game. *(owner-only check is correct for close; other disruption vectors are separate issues)*
 
-43. `restartGame` copies players with a shallow spread `{ ...p }` but the PlayerInRoom type has no nested objects, so it's safe — but inconsistent with `createRoom` which doesn't copy.
+43. `restartGame` copies players with a shallow spread `{ ...p }` but the PlayerInRoom type has no nested objects, so it's safe — but inconsistent with `createRoom` which doesn't copy. *(cosmetic — both approaches work correctly since PlayerInRoom is flat)*
 
-44. `Room.createdAt` is a `Date` object but players use `lastSeen: number` (timestamp) — inconsistent date representations.
+44. ~~`Room.createdAt` is a `Date` object but players use `lastSeen: number` (timestamp) — inconsistent date representations.~~ **FIXED**: `createdAt` changed to `number` (timestamp via `Date.now()`) for consistency with `lastSeen`.
 
-45. `startGame` allows the owner to start with only 2 players, but players could still be joining during the API call — race condition where a join arrives after start succeeds but before the response.
+45. `startGame` allows the owner to start with only 2 players, but players could still be joining during the API call — race condition where a join arrives after start succeeds but before the response. *(in single-threaded JS with synchronous Map ops, no actual race exists between join and start within the same process)*
 
 ## `src/lib/server/mmr.ts`
 
