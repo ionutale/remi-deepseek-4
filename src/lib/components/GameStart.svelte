@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { startGame } from '$lib/stores/gameStore';
+	import { startGame, gameState } from '$lib/stores/gameStore';
 	import type { GameConfig } from '$lib/engine/types';
 
 	let playerCount = $state<2 | 3 | 4>(2);
-	let playerName = $state('');
+	let error = $state('');
 
 	function handleStart() {
+		if ($gameState && $gameState.phase !== 'finished' && $gameState.phase !== 'idle') {
+			if (!confirm('A game is already in progress. Start a new one?')) return;
+		}
+		error = '';
 		const config: GameConfig = {
 			playerCount,
 			humanPlayerIndex: 0
@@ -23,20 +27,6 @@
 			<p class="text-base-content/70">Romanian card game</p>
 
 			<div class="w-full">
-				<label class="form-control w-full">
-					<div class="label">
-						<span class="label-text">Your name</span>
-					</div>
-					<input
-						type="text"
-						placeholder="Player 1"
-						class="input-bordered input w-full"
-						bind:value={playerName}
-					/>
-				</label>
-			</div>
-
-			<div class="w-full">
 				<span class="label-text mb-2 block">Number of players</span>
 				<div class="flex justify-center gap-2">
 					{#each [2, 3, 4] as count (count)}
@@ -49,6 +39,10 @@
 					{/each}
 				</div>
 			</div>
+
+			{#if error}
+				<p class="text-sm text-error">{error}</p>
+			{/if}
 
 			<button class="btn mt-4 w-full btn-lg btn-primary" onclick={handleStart}> Start Game </button>
 		</div>

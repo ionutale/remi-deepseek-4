@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Card } from '$lib/engine/types';
+	import { displayValue, isRed } from '$lib/engine/display';
 
 	let {
 		card,
@@ -7,8 +8,7 @@
 		selected = false,
 		clickable = false,
 		draggable = false,
-		onselect,
-		ondragstart
+		onselect
 	}: {
 		card: Card;
 		faceDown?: boolean;
@@ -16,40 +16,31 @@
 		clickable?: boolean;
 		draggable?: boolean;
 		onselect?: (cardId: string) => void;
-		ondragstart?: (e: DragEvent) => void;
 	} = $props();
 
-	let isRed = $derived(card.suit === '♥' || card.suit === '♦');
-
-	let displayValue = $derived(
-		card.isJoker
-			? '🃏'
-			: card.value === 1
-				? 'A'
-				: card.value === 11
-					? 'J'
-					: card.value === 12
-						? 'Q'
-						: card.value === 13
-							? 'K'
-							: String(card.value)
-	);
+	let dragOver = $state(false);
 
 	function handleDragStart(e: DragEvent) {
 		e.dataTransfer?.setData('text/card-id', card.id);
-		e.dataTransfer!.effectAllowed = 'move';
-		ondragstart?.(e);
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
 	}
 </script>
 
 <button
 	class="relative flex h-20 w-14 flex-col items-center justify-center rounded-xl border border-gray-200 bg-white shadow-md transition-all sm:h-24 sm:w-16 {selected
-		? 'scale-105 ring-3 ring-primary ring-offset-2'
-		: ''} {clickable
+		? 'scale-105 ring-2 ring-primary ring-offset-2'
+		: ''} {dragOver ? 'ring-2 ring-primary/50' : ''} {clickable
 		? 'cursor-pointer hover:-translate-y-1 hover:shadow-lg'
 		: 'cursor-default'} {!clickable ? 'opacity-60' : ''}"
 	{draggable}
 	ondragstart={handleDragStart}
+	ondragenter={() => (dragOver = true)}
+	ondragleave={() => (dragOver = false)}
+	ondragover={handleDragOver}
 	onclick={() => onselect?.(card.id)}
 	disabled={!clickable}
 >
@@ -63,10 +54,10 @@
 		<span class="text-2xl sm:text-3xl">🃏</span>
 	{:else}
 		<span
-			class="absolute top-1 left-1.5 text-xs leading-none font-bold sm:text-sm {isRed
+			class="absolute top-1 left-1.5 text-xs leading-none font-bold sm:text-sm {isRed(card.suit)
 				? 'text-red-500'
-				: 'text-gray-900'}">{displayValue}</span
+				: 'text-gray-900'}">{displayValue(card)}</span
 		>
-		<span class="text-xl sm:text-2xl {isRed ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
+		<span class="text-xl sm:text-2xl {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
 	{/if}
 </button>
