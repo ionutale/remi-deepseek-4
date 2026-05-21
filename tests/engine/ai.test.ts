@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { aiTurn, shouldDrawFromDiscard, findWorstCard } from '$lib/engine/ai';
 import type { Card } from '$lib/engine/types';
 import { initGame } from '$lib/engine/game';
+import { clearCombinationsCache } from '$lib/engine/utils';
+
+beforeEach(() => clearCombinationsCache());
 
 describe('shouldDrawFromDiscard', () => {
 	it('returns true when discard completes a set', () => {
