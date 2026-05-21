@@ -35,8 +35,19 @@ describe('createDeck', () => {
 describe('shuffle', () => {
 	it('changes card order', () => {
 		const deck = createDeck();
+		const originalOrder = deck.map((c) => c.id).join(',');
+		const allSame = Array.from({ length: 10 }, () => shuffle(deck))
+			.every((s) => s.map((c) => c.id).join(',') === originalOrder);
+		expect(allSame).toBe(false);
+	});
+
+	it('preserves all cards', () => {
+		const deck = createDeck();
+		const originalIds = new Set(deck.map((c) => c.id));
 		const shuffled = shuffle(deck);
-		expect(JSON.stringify(shuffled)).not.toBe(JSON.stringify(deck));
+		expect(shuffled).toHaveLength(deck.length);
+		const shuffledIds = new Set(shuffled.map((c) => c.id));
+		expect(shuffledIds).toEqual(originalIds);
 	});
 });
 

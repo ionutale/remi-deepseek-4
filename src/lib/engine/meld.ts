@@ -71,6 +71,14 @@ function findAllMelds(hand: Card[]): Meld[] {
 	return melds;
 }
 
+/**
+ * Backtracking search to partition a hand into valid melds.
+ *
+ * This is inherently exponential (worst case O(2^n) in the number of melds)
+ * because for each card we may need to try every meld that contains it.
+ * For a standard 15-card hand this is acceptable, but do not call on large
+ * collections of cards without a timeout or pruning strategy.
+ */
 function partitionHand(
 	remaining: Set<string>,
 	allMelds: Meld[],

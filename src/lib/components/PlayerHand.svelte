@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Card } from '$lib/engine/types';
+	import type { Card as CardType } from '$lib/engine/types';
 	import Card from './Card.svelte';
 
 	let {
@@ -9,7 +9,7 @@
 		onselect,
 		oncarddrop
 	}: {
-		cards: Card[];
+		cards: CardType[];
 		disabled?: boolean;
 		selectedCardId?: string | null;
 		onselect?: (cardId: string) => void;

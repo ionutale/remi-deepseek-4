@@ -9,8 +9,9 @@ import {
 } from '$lib/engine/game';
 import type { Card, GameState, Suit, Value } from '$lib/engine/types';
 
-function card(suit: Suit, value: Value, id: string): Card {
-	return { suit, value, id, isJoker: false };
+let cardCounter = 0;
+function card(suit: Suit, value: Value): Card {
+	return { suit, value, id: `${suit}${value}-${++cardCounter}`, isJoker: false };
 }
 
 describe('initGame', () => {
@@ -99,26 +100,27 @@ describe('nextTurn', () => {
 
 describe('closeGame', () => {
 	it('wins when hand is valid', () => {
-		const state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
+		let state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
+		// Draw first so phase transitions to 'discard' realistically
+		state = drawFromPile(state);
 		const validHand: Card[] = [
-			card('♠', 5, 't1'),
-			card('♥', 5, 't2'),
-			card('♦', 5, 't3'),
-			card('♠', 7, 't4'),
-			card('♥', 7, 't5'),
-			card('♦', 7, 't6'),
-			card('♠', 9, 't7'),
-			card('♥', 9, 't8'),
-			card('♦', 9, 't9'),
-			card('♠', 10, 't10'),
-			card('♠', 11, 't11'),
-			card('♠', 12, 't12'),
-			card('♣', 2, 't13'),
-			card('♣', 3, 't14'),
-			card('♣', 4, 't15')
+			card('♠', 5),
+			card('♥', 5),
+			card('♦', 5),
+			card('♠', 7),
+			card('♥', 7),
+			card('♦', 7),
+			card('♠', 9),
+			card('♥', 9),
+			card('♦', 9),
+			card('♠', 10),
+			card('♠', 11),
+			card('♠', 12),
+			card('♣', 2),
+			card('♣', 3),
+			card('♣', 4)
 		];
 		state.players[0].hand = validHand;
-		(state as GameState).phase = 'discard';
 
 		const result = closeGame(state);
 		expect(result.winner).toBe(0);
@@ -126,12 +128,12 @@ describe('closeGame', () => {
 	});
 
 	it('throws when hand is invalid', () => {
-		const state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
+		let state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
+		state = drawFromPile(state);
 		const invalidHand: Card[] = Array.from({ length: 15 }, (_, i) =>
-			card('♠', ((i % 13) + 1) as Value, `x${i}`)
+			card('♠', ((i % 13) + 1) as Value)
 		);
 		state.players[0].hand = invalidHand;
-		(state as GameState).phase = 'discard';
 
 		expect(() => closeGame(state)).toThrow();
 	});

@@ -35,7 +35,7 @@ export function stopPolling() {
 	}
 }
 
-export async function joinRoom(code: string, name: string) {
+export async function joinRoom(code: string, name: string): Promise<{ room?: Room; playerId?: string; error?: string }> {
 	const res = await fetch(`/api/rooms/${code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },

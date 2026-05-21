@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { createRoom, joinRoom } from '$lib/stores/roomStore';
@@ -16,18 +16,19 @@
 	let name = $state('');
 	let code = $state('');
 	let maxPlayers = $state<2 | 3 | 4>(4);
-	let error = $state('');
+	let errors = $state<string[]>([]);
 	let rooms = $state<Room[]>([]);
 	let loading = $state(false);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-	onMount(() => {
-		if (tab === 'browse') startPolling();
-	});
-
 	onDestroy(() => {
 		stopPolling();
 		if (browser) leaveQueue();
+	});
+
+	$effect(() => {
+		if (tab === 'browse') startPolling();
+		else stopPolling();
 	});
 
 	function startPolling() {
@@ -59,44 +60,44 @@
 
 	async function handleCreate() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			errors = ['Enter your name'];
 			return;
 		}
-		error = '';
+		errors = [];
 		const data = await createRoom(name.trim(), maxPlayers);
 		if (data.code) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${data.code}`);
 		} else {
-			error = data.error || 'Failed to create room';
+			errors = [data.error || 'Failed to create room'];
 		}
 	}
 
 	async function handleJoin() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			errors = ['Enter your name'];
 			return;
 		}
 		if (!code.trim()) {
-			error = 'Enter room code';
+			errors = ['Enter room code'];
 			return;
 		}
-		error = '';
+		errors = [];
 		const data = await joinRoom(code.trim().toUpperCase(), name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${code.trim().toUpperCase()}`);
 		} else {
-			error = data.error || 'Failed to join room';
+			errors = [data.error || 'Failed to join room'];
 		}
 	}
 
 	async function handleQuickMatch() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			errors = ['Enter your name'];
 			return;
 		}
-		error = '';
+		errors = [];
 		await quickJoin(name.trim());
 	}
 
@@ -113,16 +114,16 @@
 
 	async function handleJoinRoom(roomCode: string) {
 		if (!name.trim()) {
-			error = 'Enter your name first';
+			errors = ['Enter your name first'];
 			return;
 		}
-		error = '';
+		errors = [];
 		const data = await joinRoom(roomCode, name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${roomCode}`);
 		} else {
-			error = data.error || 'Failed to join room';
+			errors = [data.error || 'Failed to join room'];
 		}
 	}
 </script>
@@ -140,24 +141,21 @@
 					class="tab-lg tab {tab === 'create' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'create';
-						error = '';
-						stopPolling();
+						errors = [];
 					}}>Create</button
 				>
 				<button
 					class="tab-lg tab {tab === 'join' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'join';
-						error = '';
-						stopPolling();
+						errors = [];
 					}}>Join</button
 				>
 				<button
 					class="tab-lg tab {tab === 'browse' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'browse';
-						error = '';
-						startPolling();
+						errors = [];
 					}}>Browse</button
 				>
 			</div>
@@ -173,8 +171,6 @@
 					/>
 				</label>
 			</div>
-
-			<div class="divider text-xs text-base-content/50">OR</div>
 
 			<div class="w-full">
 				{#if $matchStatus === 'queued'}
@@ -273,8 +269,10 @@
 				</div>
 			{/if}
 
-			{#if error}
-				<p class="text-sm text-error">{error}</p>
+			{#if errors.length > 0}
+				{#each errors as err}
+					<p class="text-sm text-error">{err}</p>
+				{/each}
 			{/if}
 		</div>
 	</div>

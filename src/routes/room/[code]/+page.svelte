@@ -18,23 +18,29 @@
 	import { canFormValidClose } from '$lib/engine/meld';
 	import { drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
 	import { derived } from 'svelte/store';
+	import { cardLabel } from '$lib/engine/display';
+	import type { Card } from '$lib/engine/types';
 
 	let code = $derived($page.params.code);
 
-	const isOwner = derived([room, playerId], ([$room, $pid]) => $room?.ownerId === $pid);
+	const isOwner = derived([room, playerId], ([$room, $pid]) => {
+		if (!$room || !$pid) return false;
+		return $room.ownerId === $pid;
+	});
+
 	const myIndex = derived([room, playerId], ([$room, $pid]) => {
-		if (!$room) return -1;
+		if (!$room || !$pid) return -1;
 		return $room.players.findIndex((p) => p.id === $pid);
+	});
+
+	const myPlayerState = derived([currentGameState, myIndex], ([$gs, $idx]) => {
+		if (!$gs || $idx < 0 || $idx >= ($gs.players?.length ?? 0)) return null;
+		return $gs.players[$idx] ?? null;
 	});
 
 	const isMyTurn = derived([currentGameState, myIndex], ([$gs, $idx]) => {
 		if (!$gs || $idx < 0) return false;
 		return $gs.currentPlayerIndex === $idx && $gs.phase !== 'finished';
-	});
-
-	const myPlayerState = derived([currentGameState, myIndex], ([$gs, $idx]) => {
-		if (!$gs || $idx < 0) return null;
-		return $gs.players[$idx] ?? null;
 	});
 
 	const myHand = derived(myPlayerState, ($ps) => $ps?.hand ?? []);
@@ -56,7 +62,6 @@
 
 	async function handleLeave() {
 		reset();
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		await goto('/');
 	}
 
@@ -77,15 +82,23 @@
 	async function handleDiscard(cardId: string) {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const newState = discardCard(gs, cardId);
-		await sendGameState(newState);
+		try {
+			const newState = discardCard(gs, cardId);
+			await sendGameState(newState);
+		} catch {
+			console.error('Failed to discard card', cardId);
+		}
 	}
 
 	async function handleClose() {
 		const gs = await getCurrentGS();
 		if (!gs) return;
-		const newState = closeGame(gs);
-		await sendGameState(newState);
+		try {
+			const newState = closeGame(gs);
+			await sendGameState(newState);
+		} catch {
+			console.error('Failed to close game');
+		}
 	}
 
 	function getCurrentGS(): Promise<import('$lib/engine/types').GameState | null> {
@@ -96,12 +109,6 @@
 			});
 		});
 	}
-
-	function cardLabel(c: { value: number; suit: string; isJoker?: boolean }) {
-		if (c.isJoker) return '★';
-		const face: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
-		return `${face[c.value] ?? c.value}${c.suit}`;
-	}
 </script>
 
 <div class="min-h-screen bg-base-200 p-4">
@@ -110,8 +117,6 @@
 			<div class="card bg-base-100 shadow-xl">
 				<div class="card-body items-center gap-4 text-center">
 					<h2 class="text-3xl font-bold">Room: {code}</h2>
-
-					<div class="badge badge-lg badge-info">{code}</div>
 					<p class="text-sm text-base-content/60">Share this code with friends</p>
 
 					<div class="w-full">
@@ -142,7 +147,9 @@
 						{/if}
 					{/if}
 
-					<button class="btn btn-ghost btn-sm" onclick={handleLeave}>Leave room</button>
+					{#if $roomStatus === 'waiting'}
+						<button class="btn btn-ghost btn-sm" onclick={handleLeave}>Leave room</button>
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -165,9 +172,7 @@
 
 			<div class="card bg-base-100 shadow-xl">
 				<div class="card-body items-center gap-4">
-					<div
-						class="flex min-h-[4rem] w-full flex-wrap justify-center rounded-box bg-base-200 p-4"
-					>
+					<div class="flex min-h-[4rem] w-full flex-wrap justify-center rounded-box bg-base-200 p-4">
 						{#each $myHand as card (card.id)}
 							<div class="rounded border bg-white px-3 py-1.5 text-sm font-bold shadow-sm">
 								{cardLabel(card)}
@@ -193,7 +198,7 @@
 							</button>
 						{/if}
 						{#if $canClose}
-							<button class="btn btn-success" onclick={handleClose}> Close (Win) </button>
+							<button class="btn btn-success" onclick={handleClose}>Close Game</button>
 						{/if}
 					</div>
 
@@ -244,7 +249,6 @@
 							class="btn w-full btn-ghost"
 							onclick={async () => {
 								await closeRoomAction();
-								// eslint-disable-next-line svelte/no-navigation-without-resolve
 								await goto('/');
 							}}>Close Room</button
 						>
@@ -252,6 +256,10 @@
 					<button class="btn btn-ghost btn-sm" onclick={handleLeave}>Leave room</button>
 				</div>
 			</div>
+		</div>
+	{:else}
+		<div class="mx-auto max-w-md pt-20 text-center">
+			<p class="text-base-content/60">Loading room...</p>
 		</div>
 	{/if}
 </div>

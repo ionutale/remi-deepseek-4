@@ -9,6 +9,7 @@
 		playerClose
 	} from '$lib/stores/gameStore';
 	import { canFormValidClose } from '$lib/engine/meld';
+	import { HAND_SIZE } from '$lib/engine/deck';
 	import type { Card, MeldType } from '$lib/engine/types';
 	import PlayerHand from './PlayerHand.svelte';
 	import OpponentArea from './OpponentArea.svelte';
@@ -16,11 +17,16 @@
 	import DiscardPile from './DiscardPile.svelte';
 	import MeldArea from './MeldArea.svelte';
 
+	const MAX_MELD_SLOTS = Math.ceil(HAND_SIZE / 3) + 2;
+
 	let selectedCardId = $state<string | null>(null);
-	let meldSlots = $state<Card[][]>(Array.from({ length: 20 }, () => []));
+	let meldSlots = $state<Card[][]>(Array.from({ length: MAX_MELD_SLOTS }, () => []));
 
 	let humanHand = $derived($gameState?.players[0]?.hand ?? []);
 	let opponents = $derived($gameState ? $gameState.players.slice(1) : []);
+	let opponentNames = $derived(
+		$gameState ? $gameState.players.slice(1).map((_, i) => `Player ${i + 2}`) : []
+	);
 	let drawCount = $derived($gameState?.drawPile.length ?? 0);
 	let topDiscard = $derived(
 		$gameState && $gameState.discardPile.length > 0
@@ -39,18 +45,22 @@
 		meldSlots.map((cards) => {
 			if (cards.length === 0) return null;
 			const nonJokers = cards.filter((c) => !c.isJoker);
-			const allSameSuit = nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
-			const allSameValue = nonJokers.every((c) => c.value === nonJokers[0]?.value);
+			const allSameSuit = nonJokers.length > 0 && nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
+			const allSameValue = nonJokers.length > 0 && nonJokers.every((c) => c.value === nonJokers[0]?.value);
 			const type: MeldType = allSameValue ? 'set' : allSameSuit ? 'sequence' : 'set';
 			return { cards, type };
 		})
 	);
 
+	function triggerMeldUpdate() {
+		meldSlots = meldSlots;
+	}
+
 	function addCardToSlot(slotIndex: number, cardId: string) {
 		const card = humanHand.find((c) => c.id === cardId);
 		if (!card) return;
 		meldSlots[slotIndex] = [...meldSlots[slotIndex], card];
-		meldSlots = meldSlots;
+		triggerMeldUpdate();
 	}
 
 	function removeCardFromSlot(cardId: string) {
@@ -58,7 +68,7 @@
 			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
 			if (idx >= 0) {
 				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
-				meldSlots = meldSlots;
+				triggerMeldUpdate();
 				return;
 			}
 		}
@@ -71,7 +81,7 @@
 		const target = meldSlots[toIndex];
 		meldSlots[fromIndex] = target;
 		meldSlots[toIndex] = meld;
-		meldSlots = meldSlots;
+		triggerMeldUpdate();
 	}
 
 	function handleSelectCard(cardId: string) {
@@ -95,7 +105,11 @@
 	}
 
 	function handleClose() {
-		playerClose();
+		try {
+			playerClose();
+		} catch (e) {
+			console.error('Failed to close game', e);
+		}
 	}
 
 	function handleCardDrop(e: DragEvent, slotIndex: number) {
@@ -123,7 +137,7 @@
 				const card = meldSlots[i][idx];
 				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
 				meldSlots[toSlotIndex] = [...meldSlots[toSlotIndex], card];
-				meldSlots = meldSlots;
+				triggerMeldUpdate();
 				return;
 			}
 		}
@@ -131,7 +145,11 @@
 </script>
 
 <div class="flex min-h-screen flex-col bg-gradient-to-br from-green-800 to-green-900 p-2 sm:p-4">
-	<OpponentArea {opponents} currentPlayerIndex={$gameState?.currentPlayerIndex ?? 0} />
+	<OpponentArea
+		{opponents}
+		names={opponentNames}
+		currentPlayerIndex={$gameState?.currentPlayerIndex ?? 0}
+	/>
 
 	<div class="flex flex-1 flex-col items-center justify-center gap-3">
 		<div class="flex items-center gap-8 sm:gap-16">
