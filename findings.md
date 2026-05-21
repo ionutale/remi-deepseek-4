@@ -160,19 +160,19 @@
 
 ## `src/lib/stores/matchStore.ts`
 
-68. `currentPlayerId` is a module-level variable — if two browser tabs use matchmaking simultaneously, they share the same `currentPlayerId`, causing cross-tab interference.
+68. `currentPlayerId` is a module-level variable — if two browser tabs use matchmaking simultaneously, they share the same `currentPlayerId`, causing cross-tab interference. *(client-side architecture limitation; each tab shares the same Svelte store module)*
 
-69. `quickJoin` uses `crypto.randomUUID()` for player ID — inconsistent with `nanoid` used everywhere else in the codebase.
+69. ~~`quickJoin` uses `crypto.randomUUID()` for player ID — inconsistent with `nanoid` used everywhere else in the codebase.~~ **FIXED**: Changed to `nanoid(10)` for consistency.
 
-70. `quickJoin` returns `string | null` — callers must handle both types, but the method signature doesn't clarify which case returns which.
+70. `quickJoin` returns `string | null` — callers must handle both types, but the method signature doesn't clarify which case returns which. *(returns roomCode string on match, null on queued — documented by return type; JSDoc would clarify further)*
 
-71. Polling starts after `quickJoin` responds with `queued` — a match could be found between the POST response and the first poll starting, causing a race where the client thinks it's queued but the server thinks it's matched.
+71. Polling starts after `quickJoin` responds with `queued` — a match could be found between the POST response and the first poll starting, causing a race where the client thinks it's queued but the server thinks it's matched. *(UI latency only — server match is recorded immediately; poll will detect it on next cycle)*
 
-72. `recordResult` in matchStore sends `roomCode` but doesn't include which playerId — the server determines winner from room state, but if both players report the result, it's recorded twice.
+72. ~~`recordResult` in matchStore sends `roomCode` but doesn't include which playerId — the server determines winner from room state, but if both players report the result, it's recorded twice.~~ **FIXED**: Added `recordedRooms` Set in result endpoint to prevent double-recording; second call returns early.
 
-73. `leaveQueue` calls `stopPolling()` then `fetch` then resets state — if the fetch fails, the polling is already stopped and state is reset anyway, but the server still thinks the player is queued.
+73. ~~`leaveQueue` calls `stopPolling()` then `fetch` then resets state — if the fetch fails, the polling is already stopped and state is reset anyway, but the server still thinks the player is queued.~~ **FIXED**: State is only reset on successful fetch (`res.ok`); failed leave preserves client-server state sync.
 
-74. `matchStatus.set('idle')` is called even when `leaveQueue` fetch fails — client-server state desynchronization.
+74. ~~`matchStatus.set('idle')` is called even when `leaveQueue` fetch fails — client-server state desynchronization.~~ **FIXED** (resolved alongside #73 — state reset guarded by `res.ok`).
 
 ## `src/lib/engine/types.ts`
 

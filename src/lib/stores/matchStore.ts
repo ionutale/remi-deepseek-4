@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { nanoid } from 'nanoid';
 import { playerId as roomPlayerId } from './roomStore';
 
 export const matchStatus = writable<'idle' | 'queued' | 'matched'>('idle');
@@ -14,7 +15,7 @@ export function getCurrentPlayerId(): string {
 
 export async function quickJoin(name: string): Promise<string | null> {
 	matchStatus.set('queued');
-	const pid = crypto.randomUUID();
+	const pid = nanoid(10);
 	currentPlayerId = pid;
 
 	const res = await fetch('/api/matchmaking', {
@@ -66,11 +67,12 @@ export function stopPolling(): void {
 
 export async function leaveQueue(): Promise<void> {
 	stopPolling();
-	await fetch('/api/matchmaking', {
+	const res = await fetch('/api/matchmaking', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ action: 'leave', playerId: currentPlayerId })
 	});
+	if (!res.ok) return;
 	matchStatus.set('idle');
 	matchRoomCode.set(null);
 	matchQueueSize.set(0);
