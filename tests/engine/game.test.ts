@@ -14,10 +14,10 @@ function card(suit: Suit, value: Value, id: string): Card {
 }
 
 describe('initGame', () => {
-	it('creates GameState with 4 players each having 15 cards', () => {
+	it('creates GameState with 4 players each having 14 cards', () => {
 		const state = initGame({ playerCount: 4, humanPlayerIndex: 0 });
 		expect(state.players).toHaveLength(4);
-		state.players.forEach((p) => expect(p.hand).toHaveLength(15));
+		state.players.forEach((p) => expect(p.hand).toHaveLength(14));
 		expect(state.phase).toBe('draw');
 		expect(state.currentPlayerIndex).toBe(0);
 		expect(state.winner).toBeNull();
@@ -25,7 +25,7 @@ describe('initGame', () => {
 
 	it('has correct draw pile and discard pile', () => {
 		const state = initGame({ playerCount: 4, humanPlayerIndex: 0 });
-		expect(state.drawPile.length).toBe(108 - 4 * 15 - 1);
+		expect(state.drawPile.length).toBe(108 - 4 * 14 - 1);
 		expect(state.discardPile).toHaveLength(1);
 	});
 });
@@ -35,7 +35,7 @@ describe('drawFromPile', () => {
 		let state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
 		const pileSize = state.drawPile.length;
 		state = drawFromPile(state);
-		expect(state.players[0].hand).toHaveLength(16);
+		expect(state.players[0].hand).toHaveLength(15);
 		expect(state.drawPile).toHaveLength(pileSize - 1);
 		expect(state.phase).toBe('discard');
 	});
@@ -51,7 +51,7 @@ describe('drawFromDiscard', () => {
 	it('takes top card from discard pile', () => {
 		let state = initGame({ playerCount: 2, humanPlayerIndex: 0 });
 		state = drawFromDiscard(state);
-		expect(state.players[0].hand).toHaveLength(16);
+		expect(state.players[0].hand).toHaveLength(15);
 		expect(state.discardPile).toHaveLength(0);
 		expect(state.phase).toBe('discard');
 	});
@@ -70,7 +70,7 @@ describe('discardCard', () => {
 		const cardToDiscard = state.players[0].hand[0];
 		const discardSize = state.discardPile.length;
 		state = discardCard(state, cardToDiscard.id);
-		expect(state.players[0].hand).toHaveLength(15);
+		expect(state.players[0].hand).toHaveLength(14);
 		expect(state.discardPile).toHaveLength(discardSize + 1);
 	});
 
@@ -170,7 +170,7 @@ describe('full game flow', () => {
 		expect(result.drawPile.length).toBe(4);
 		expect(result.discardPile).toHaveLength(1);
 		expect(result.discardPile[0].id).toBe('top-card');
-		expect(result.players[0].hand).toHaveLength(16);
+		expect(result.players[0].hand).toHaveLength(15);
 	});
 
 	it('throws when both piles are empty', () => {

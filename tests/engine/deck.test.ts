@@ -41,12 +41,12 @@ describe('shuffle', () => {
 });
 
 describe('deal', () => {
-	it('deals 15 cards to each of 4 players', () => {
+	it('deals 14 cards to each of 4 players', () => {
 		const deck = createDeck();
 		const { hands, remaining } = deal(deck, 4);
 		expect(hands).toHaveLength(4);
-		hands.forEach((hand) => expect(hand).toHaveLength(15));
-		expect(remaining).toHaveLength(108 - 4 * 15);
+		hands.forEach((hand) => expect(hand).toHaveLength(14));
+		expect(remaining).toHaveLength(108 - 4 * 14);
 	});
 
 	it('does not duplicate cards', () => {

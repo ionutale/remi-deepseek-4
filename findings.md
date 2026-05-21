@@ -188,17 +188,17 @@
 
 ## `src/lib/engine/deck.ts`
 
-80. Magic number `15` for cards per player is hardcoded — should be a named constant like `HAND_SIZE`.
+80. ~~Magic number `15` for cards per player is hardcoded — should be a named constant like `HAND_SIZE`.~~ **FIXED**: Added `export const HAND_SIZE = 15` in `deck.ts`; used in `meld.ts` and all `deal` calculations.
 
-81. Magic number `108` total cards is implicit from `52 * 2 + 4` — should be derived or constant.
+81. Magic number `108` total cards is implicit from `52 * 2 + 4` — should be derived or constant. *(derivable as `SUITS.length * VALUES.length * 2 + 4`; deck size is never referenced directly by other code)*
 
-82. Joker ID uses `value: 0 as unknown as Value` — fragile type cast that could break with stricter TypeScript settings.
+82. ~~Joker ID uses `value: 0 as unknown as Value` — fragile type cast that could break with stricter TypeScript settings.~~ **FIXED** (resolved alongside #75 — `0` is now a valid `Value`, no cast needed).
 
-83. `createDeck()` produces cards in deterministic suit-value order — all randomness depends solely on `shuffle`, making the initial deck layout predictable.
+83. `createDeck()` produces cards in deterministic suit-value order — all randomness depends solely on `shuffle`, making the initial deck layout predictable. *(standard practice for card games — deck is shuffled before dealing; deterministic creation has no security implications)*
 
-84. `deal` always gives each player exactly 15 cards regardless of player count — for 2 players: `15 * 2 = 30` dealt + 1 discard = 31 used, leaving 77 in draw pile. For 4 players: `15 * 4 = 60` + 1 = 61 used, leaving 47.
+84. ~~`deal` always gives each player exactly 15 cards regardless of player count — for 2 players: `15 * 2 = 30` dealt + 1 discard = 31 used, leaving 77 in draw pile. For 4 players: `15 * 4 = 60` + 1 = 61 used, leaving 47.~~ **FIXED**: Hand size changed from 15 → 14 (standard Rummy rules). Player draws to 15 on first turn, then discards. `canFormValidClose` updated to check `HAND_SIZE + 1` (15 cards, after drawing).
 
-85. `deal` indexes `playerCount * 15` without checking if the deck has enough cards — with `playerCount = 10`, it would produce empty hands and an empty remaining array.
+85. ~~`deal` indexes `playerCount * 15` without checking if the deck has enough cards — with `playerCount = 10`, it would produce empty hands and an empty remaining array.~~ **FIXED**: Added `playerCount` bounds check (throws for `< 2` or `> 4`).
 
 ## `src/lib/engine/game.ts`
 

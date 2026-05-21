@@ -1,5 +1,6 @@
 import type { Card, Meld } from './types';
 import { combinations } from './utils';
+import { HAND_SIZE } from './deck';
 
 export function isValidSet(cards: Card[]): boolean {
 	if (cards.length < 3) return false;
@@ -131,7 +132,7 @@ export function findBestMelds(
 }
 
 export function canFormValidClose(hand: Card[]): boolean {
-	if (hand.length !== 15) return false;
+	if (hand.length !== HAND_SIZE + 1) return false;
 
 	const result = findBestMelds(hand, true, true);
 	return result !== null;
