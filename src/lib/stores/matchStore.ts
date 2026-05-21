@@ -1,6 +1,5 @@
-import { writable } from 'svelte/store';
-import { nanoid } from 'nanoid';
-import { playerId as roomPlayerId } from './roomStore';
+import { writable, get } from 'svelte/store';
+import { playerId as roomPlayerId, sessionToken } from './roomStore';
 
 export const matchStatus = writable<'idle' | 'queued' | 'matched'>('idle');
 export const matchRoomCode = writable<string | null>(null);
@@ -8,6 +7,7 @@ export const matchQueueSize = writable(0);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let currentPlayerId = '';
+let currentSessionToken = '';
 
 export function getCurrentPlayerId(): string {
 	return currentPlayerId;
@@ -15,20 +15,24 @@ export function getCurrentPlayerId(): string {
 
 export async function quickJoin(name: string): Promise<string | null> {
 	matchStatus.set('queued');
-	const pid = nanoid(10);
-	currentPlayerId = pid;
 
 	const res = await fetch('/api/matchmaking', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'join', playerId: pid, playerName: name })
+		body: JSON.stringify({ action: 'join', playerName: name })
 	});
 	const data = await res.json();
+
+	if (data.playerId) {
+		currentPlayerId = data.playerId;
+		if (data.sessionToken) currentSessionToken = data.sessionToken;
+	}
 
 	if (data.status === 'matched') {
 		matchStatus.set('matched');
 		matchRoomCode.set(data.roomCode);
-		roomPlayerId.set(pid);
+		roomPlayerId.set(data.playerId);
+		sessionToken.set(data.sessionToken);
 		return data.roomCode;
 	}
 
@@ -48,6 +52,7 @@ export function startPolling(): void {
 					matchStatus.set('matched');
 					matchRoomCode.set(data.roomCode);
 					roomPlayerId.set(currentPlayerId);
+					sessionToken.set(currentSessionToken);
 					stopPolling();
 				}
 				if (data.queueSize != null) matchQueueSize.set(data.queueSize);
@@ -70,7 +75,7 @@ export async function leaveQueue(): Promise<void> {
 	const res = await fetch('/api/matchmaking', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'leave', playerId: currentPlayerId })
+		body: JSON.stringify({ action: 'leave', playerId: currentPlayerId, sessionToken: currentSessionToken })
 	});
 	if (!res.ok) return;
 	matchStatus.set('idle');
@@ -84,7 +89,7 @@ export async function recordResult(
 	const res = await fetch('/api/matchmaking/result', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ roomCode })
+		body: JSON.stringify({ roomCode, playerId: get(roomPlayerId), sessionToken: get(sessionToken) })
 	});
 	if (res.ok) return res.json();
 	return null;

@@ -1,11 +1,15 @@
 import { json } from '@sveltejs/kit';
 import { recordResult, removeMatch, getMMR } from '$lib/server/mmr';
 import { getRoom } from '$lib/server/roomService';
+import { verifySession } from '$lib/server/auth';
 
 const recordedRooms = new Set<string>();
 
 export async function POST({ request }) {
-	const { roomCode } = await request.json();
+	const { roomCode, playerId, sessionToken } = await request.json();
+	if (!playerId || !sessionToken || !verifySession(playerId, sessionToken)) {
+		return json({ error: 'Unauthorized' }, { status: 403 });
+	}
 	if (recordedRooms.has(roomCode)) return json({ ok: true });
 
 	const room = getRoom(roomCode);

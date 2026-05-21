@@ -1,17 +1,20 @@
 import { json } from '@sveltejs/kit';
 import { tryMatch, getMatch, leaveQueue, getQueueSize, isQueued } from '$lib/server/mmr';
 import { createRoom, startGame } from '$lib/server/roomService';
+import { createSession, verifySession, sanitizeName } from '$lib/server/auth';
+import { nanoid } from 'nanoid';
 
 export async function POST({ request }) {
-	const { action, playerId, playerName } = await request.json();
+	const { action, playerId, playerName, sessionToken } = await request.json();
 
 	if (action === 'join') {
 		if (!playerName) return json({ error: 'Name required' }, { status: 400 });
-		if (!playerId) return json({ error: 'Player ID required' }, { status: 400 });
 
-		const result = tryMatch(playerId, playerName);
+		const id = nanoid(10);
+		const token = createSession(id);
+		const result = tryMatch(id, sanitizeName(playerName));
 		if ('queued' in result) {
-			return json({ status: 'queued', queueSize: getQueueSize() });
+			return json({ status: 'queued', playerId: id, sessionToken: token, queueSize: getQueueSize() });
 		}
 		const match = result.matched;
 
@@ -22,12 +25,17 @@ export async function POST({ request }) {
 
 		return json({
 			status: 'matched',
+			playerId: id,
+			sessionToken: token,
 			roomCode: match.roomCode,
 			match
 		});
 	}
 
 	if (action === 'leave') {
+		if (!playerId || !sessionToken || !verifySession(playerId, sessionToken)) {
+			return json({ error: 'Unauthorized' }, { status: 403 });
+		}
 		leaveQueue(playerId);
 		return json({ ok: true });
 	}
