@@ -33,7 +33,7 @@
 		oncarddrop?.(e);
 	}
 
-	function handleCardDragStart(e: DragEvent, card: Card) {
+	function handleCardDragStart(e: DragEvent, card: CardType) {
 		e.dataTransfer?.setData('text/card-id', card.id);
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}

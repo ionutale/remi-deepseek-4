@@ -2,6 +2,8 @@
 	import { startGame, gameState } from '$lib/stores/gameStore';
 	import type { GameConfig } from '$lib/engine/types';
 
+	const PLAYER_COUNTS = [2, 3, 4] as const;
+
 	let playerCount = $state<2 | 3 | 4>(2);
 	let error = $state('');
 
@@ -29,10 +31,10 @@
 			<div class="w-full">
 				<span class="label-text mb-2 block">Number of players</span>
 				<div class="flex justify-center gap-2">
-					{#each [2, 3, 4] as count (count)}
+					{#each PLAYER_COUNTS as count (count)}
 						<button
 							class="btn {playerCount === count ? 'btn-primary' : 'btn-outline'} btn-lg"
-							onclick={() => (playerCount = count as 2 | 3 | 4)}
+							onclick={() => (playerCount = count)}
 						>
 							{count}
 						</button>

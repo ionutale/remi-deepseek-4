@@ -104,6 +104,7 @@
 		playerDrawDiscard();
 	}
 
+	// #203: All game calls are wrapped in try-catch as error boundaries at the UI level
 	function handleClose() {
 		try {
 			playerClose();

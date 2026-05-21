@@ -37,6 +37,7 @@ export default defineConfig(
 		}
 	},
 	{
+		// #202: Unused vars without `_` prefix — TypeScript catches these separately
 		rules: {
 			'@typescript-eslint/no-unused-vars': [
 				'error',
