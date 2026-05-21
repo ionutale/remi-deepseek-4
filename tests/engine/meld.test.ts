@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { isValidSet, isValidSequence, isValidMeld, canFormValidClose } from '$lib/engine/meld';
-import type { Card, Suit, Value } from '$lib/engine/types';
+import type { Card, JokerType, Suit, Value } from '$lib/engine/types';
 
 let cardId = 0;
-function c(suit: Suit, value: Value, isJoker = false): Card {
-	return { suit, value, id: `${suit}-${value}-${cardId++}`, isJoker };
+function c(suit: Suit, value: Value, isJoker = false, jokerType?: JokerType): Card {
+	return { suit, value, id: `${suit}-${value}-${cardId++}`, isJoker, jokerType };
 }
 
 describe('isValidSet', () => {
@@ -257,6 +257,44 @@ describe('canFormValidClose', () => {
 			c('♠', 9),
 			c('♠', 10),
 			c('♠', 11)
+		];
+		expect(canFormValidClose(hand)).toBe(true);
+	});
+
+	it('accepts single colored joker as a valid meld', () => {
+		expect(isValidMeld([c('♥', 0 as Value, true, 'colored')])).toBe(true);
+	});
+
+	it('rejects single black joker as a standalone meld', () => {
+		expect(isValidMeld([c('♠', 0 as Value, true, 'black')])).toBe(false);
+	});
+
+	it('accepts close where colored joker acts as wild meld (3 real melds + joker meld + spare)', () => {
+		// colored joker = wild meld, 3 real melds, 1 spare
+		// real: set(5s ♠♥♦), seq(10-12♠), seq(3-6♣) → need ≥1 set + ≥1 sequence ✓
+		const hand = [
+			c('♠', 5), c('♥', 5), c('♦', 5),              // set of 5s (3)
+			c('♠', 10), c('♠', 11), c('♠', 12),             // sequence 10-12♠ (3)
+			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),    // sequence 3-6♣ (4)
+			c('♥', 0 as Value, true, 'colored'),             // colored joker = wild meld
+			c('♥', 13),                                       // spare K♥
+			// 3 more cards to fill 15 total — add to one of the melds
+			c('♠', 7), c('♥', 7), c('♦', 7)                 // set of 7s (3)
+		];
+		// 15 cards: set(3) + seq(3) + seq(4) + set(3) = 13 real + joker + spare = 15
+		// Removing spare: 14 = joker(1) + 3 real melds(13) covering ≥1 set + ≥1 seq ✓
+		expect(canFormValidClose(hand)).toBe(true);
+	});
+
+	it('accepts close with colored joker as wild meld and black joker as wild card', () => {
+		// black joker fills a gap in a sequence; colored joker = entire meld
+		const hand = [
+			c('♠', 5), c('♥', 5), c('♦', 5),                        // set of 5s (3)
+			c('♠', 9), c('♠', 10), c('♠', 0 as Value, true, 'black'), // seq 9-10-[11]♠ via black joker (3)
+			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),              // sequence 3-6♣ (4)
+			c('♥', 0 as Value, true, 'colored'),                       // colored joker = wild meld
+			c('♥', 13),                                                  // spare K♥
+			c('♠', 7), c('♥', 7), c('♦', 7)                           // set of 7s (3)
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});

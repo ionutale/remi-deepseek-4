@@ -44,12 +44,20 @@ export function isValidSequence(cards: Card[]): boolean {
 }
 
 export function isValidMeld(cards: Card[]): boolean {
+	if (cards.length === 1 && cards[0].isJoker && cards[0].jokerType === 'colored') return true;
 	return isValidSet(cards) || isValidSequence(cards);
 }
 
 function findAllMelds(hand: Card[]): Meld[] {
 	const melds: Meld[] = [];
 	const seen = new Set<string>();
+
+	// Colored joker = standalone wild meld (counts as an entire group)
+	for (const card of hand) {
+		if (card.isJoker && card.jokerType === 'colored') {
+			melds.push({ cards: [card], type: 'joker-meld' });
+		}
+	}
 
 	for (let size = 3; size <= hand.length; size++) {
 		for (const combo of combinations(hand, size)) {
@@ -149,6 +157,14 @@ export function findBestMelds(
 export function suggestMelds(hand: Card[]): Card[][] {
 	const groups: Card[][] = [];
 	const used = new Set<string>();
+
+	// Colored jokers are standalone wild melds — show them in their own slot
+	for (const card of hand) {
+		if (card.isJoker && card.jokerType === 'colored') {
+			groups.push([card]);
+			used.add(card.id);
+		}
+	}
 
 	// Step 1 — complete valid melds, greedy largest-first
 	const allValid = findAllMelds(hand);

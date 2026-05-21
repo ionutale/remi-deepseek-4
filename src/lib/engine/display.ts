@@ -8,8 +8,8 @@ function valueToString(v: Value): string {
 	return String(v);
 }
 
-export function cardLabel(card: Pick<Card, 'value' | 'isJoker' | 'suit'>): string {
-	if (card.isJoker) return '🃏';
+export function cardLabel(card: Pick<Card, 'value' | 'isJoker' | 'suit' | 'jokerType'>): string {
+	if (card.isJoker) return card.jokerType === 'colored' ? '★C' : '★B';
 	return `${valueToString(card.value)}${card.suit}`;
 }
 
@@ -17,7 +17,7 @@ export function isRed(suit: string): boolean {
 	return suit === '♥' || suit === '♦';
 }
 
-export function displayValue(card: Pick<Card, 'value' | 'isJoker'>): string {
-	if (card.isJoker) return '🃏';
+export function displayValue(card: Pick<Card, 'value' | 'isJoker' | 'jokerType'>): string {
+	if (card.isJoker) return '★';
 	return valueToString(card.value);
 }

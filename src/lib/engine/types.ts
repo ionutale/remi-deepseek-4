@@ -2,14 +2,17 @@ export type Suit = '♠' | '♥' | '♦' | '♣';
 
 export type Value = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
+export type JokerType = 'black' | 'colored';
+
 export interface Card {
 	suit: Suit;
 	value: Value;
 	id: string;
 	isJoker: boolean;
+	jokerType?: JokerType;
 }
 
-export type MeldType = 'set' | 'sequence';
+export type MeldType = 'set' | 'sequence' | 'joker-meld';
 
 export interface Meld {
 	cards: Card[];

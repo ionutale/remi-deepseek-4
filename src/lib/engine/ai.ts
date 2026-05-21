@@ -14,6 +14,7 @@ function hasMeldContaining(cards: Card[], target: Card): boolean {
 }
 
 export function shouldDrawFromDiscard(hand: Card[], discardTop: Card): boolean {
+	if (discardTop.isJoker && discardTop.jokerType === 'colored') return true;
 	const newHand = [...hand, discardTop];
 	return hasMeldContaining(newHand, discardTop);
 }

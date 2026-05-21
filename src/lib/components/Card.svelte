@@ -50,8 +50,16 @@
 		>
 			<span class="text-lg font-bold text-white">?</span>
 		</div>
+	{:else if card.isJoker && card.jokerType === 'colored'}
+		<div class="flex h-full w-full flex-col items-center justify-center rounded-xl bg-linear-to-br from-rose-400 via-amber-400 to-violet-500">
+			<span class="text-xl font-black text-white drop-shadow sm:text-2xl">★</span>
+			<span class="text-[9px] font-bold uppercase tracking-widest text-white/90">Wild</span>
+		</div>
 	{:else if card.isJoker}
-		<span class="text-2xl sm:text-3xl">🃏</span>
+		<div class="flex h-full w-full flex-col items-center justify-center rounded-xl bg-gray-900">
+			<span class="text-xl font-black text-white sm:text-2xl">★</span>
+			<span class="text-[9px] font-bold uppercase tracking-widest text-white/60">Joker</span>
+		</div>
 	{:else}
 		<span
 			class="absolute top-1 left-1.5 text-xs leading-none font-bold sm:text-sm {isRed(card.suit)

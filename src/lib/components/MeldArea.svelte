@@ -163,14 +163,22 @@
 										ondragstart={(e) => handleCardDragStart(e, slotIndex, card.id)}
 									>
 										<!-- Compact tile -->
-										<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md border border-gray-200 bg-white shadow-sm sm:h-20 sm:w-14">
-											{#if card.isJoker}
-												<span class="text-xl">🃏</span>
-											{:else}
+										{#if card.isJoker && card.jokerType === 'colored'}
+											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md shadow-sm sm:h-20 sm:w-14 bg-linear-to-br from-rose-400 via-amber-400 to-violet-500">
+												<span class="text-lg font-black text-white drop-shadow">★</span>
+												<span class="text-[8px] font-bold uppercase tracking-widest text-white/90">Wild</span>
+											</div>
+										{:else if card.isJoker}
+											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md shadow-sm sm:h-20 sm:w-14 bg-gray-900">
+												<span class="text-lg font-black text-white">★</span>
+												<span class="text-[8px] font-bold uppercase tracking-widest text-white/60">Joker</span>
+											</div>
+										{:else}
+											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md border border-gray-200 bg-white shadow-sm sm:h-20 sm:w-14">
 												<span class="text-xs font-bold leading-none sm:text-sm {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.value === 1 ? 'A' : card.value === 11 ? 'J' : card.value === 12 ? 'Q' : card.value === 13 ? 'K' : card.value}</span>
 												<span class="text-sm sm:text-base {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
-											{/if}
-										</div>
+											</div>
+										{/if}
 										<!-- Remove button -->
 										<button
 											class="absolute -top-1.5 -right-1.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white shadow group-hover:flex hover:bg-red-600"
@@ -184,7 +192,7 @@
 							<!-- Validity badge -->
 							<div class="absolute top-1 right-1.5 text-[9px] font-bold uppercase tracking-wider
 								{valid ? 'text-green-400' : 'text-red-400'}">
-								{valid ? '✓' : '✗'}&nbsp;{meld.type === 'set' ? 'Set' : 'Seq'}
+								{valid ? '✓' : '✗'}&nbsp;{meld.type === 'set' ? 'Set' : meld.type === 'joker-meld' ? 'Wild' : 'Seq'}
 							</div>
 						{:else}
 							<!-- Empty slot -->
