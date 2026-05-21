@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { isValidSet, isValidSequence, isValidMeld, canFormValidClose } from '$lib/engine/meld';
 import type { Card, Suit, Value } from '$lib/engine/types';
 
+let cardId = 0;
 function c(suit: Suit, value: Value, isJoker = false): Card {
-	return { suit, value, id: `${suit}-${value}-${Math.random()}`, isJoker };
+	return { suit, value, id: `${suit}-${value}-${cardId++}`, isJoker };
 }
 
 describe('isValidSet', () => {

@@ -236,57 +236,21 @@
 
 ## `src/lib/engine/meld.ts`
 
-101. `findAllMelds` checks all combinations for every size from 3 to hand.length — O(2^n). For a 15-card hand, this is astronomically expensive (32,767 subsets checked).
+101. `findAllMelds` checks all combinations for every size from 3 to hand.length — O(2^n). For a 15-card hand, this is astronomically expensive (32,767 subsets checked). *(algorithmic — combinatorial meld detection; performance acceptable for 14-15 card hands)*
 
-102. `partitionHand` uses recursion with no depth limit — a hand of 15+ cards can cause stack overflow in deeply nested partitions.
+102. `partitionHand` uses recursion with no depth limit — a hand of 15+ cards can cause stack overflow in deeply nested partitions. *(max depth is number of melds = hand_size / 3 ≈ 5 — well within stack limits)*
 
-103. `partitionHand` greedily returns the first valid partition — may miss alternative valid partitions if the first branch fails to find one that doesn't exist. Actually, it backtracks, so this is fine, but the backtracking is exponential.
+103. `partitionHand` greedily returns the first valid partition — may miss alternative valid partitions if the first branch fails to find one that doesn't exist. Actually, it backtracks, so this is fine, but the backtracking is exponential. *(backtracking is correct — finds any valid partition if one exists)*
 
-104. `isValidSequence` checks `range <= cards.length` — a sequence `[5, 6, 10]` with range 6 and 3 cards passes (`6 <= 3` is false, so rejected). But a sequence `[5, 6, 7, 8, 9, 10, 11, 12, 13, 1]` with range 13 and 10 cards passes (`13 <= 10` is false). Wait, that's rejected too. Actually `range = 13 - 1 + 1 = 13`, `13 <= 10` = false. OK.
+104. `isValidSequence` checks `range <= cards.length` — the range check is a necessary condition for joker filling. Analysis confirms it's correct for all practical cases: with non-jokers at values 5 and 8 (range 4) and 1 joker (3 cards total), `4 <= 3` is false, correctly rejected (need 2 jokers to span 4 values). *(logic is sound — no fix needed)*
 
-But the issue is: `[5, 6, 8]` has range 4, cards length 3, `4 <= 3` is false → rejected correctly. But `[5, 6, 7, 8]` with range 4 and 4 cards: `4 <= 4` is true → accepted. Correct behavior.
-
-Wait — `[5, 6, 8]` range = `8 - 5 + 1 = 4`, `4 <= 3` is false → rejected. But this is NOT necessarily invalid with jokers. With joker substitution, the range could exceed the card count.
-
-Actually, the joker check is separate. Non-jokers in `[5, 6, 8]`? All non-jokers. `values = {5, 6, 8}`. `sorted = [5, 6, 8]`. `range = 8 - 5 + 1 = 4`. `4 <= 3` is false. So `isValidSequence([5, 6, 8])` = false. Correct — it's not a valid sequence without jokers.
-
-But with one joker and two cards `[5, JOKER, 8]`: non-jokers = [5, 8], values = {5, 8}, sorted = [5, 8], range = 8 - 5 + 1 = 4, `4 <= 3` is false → rejected. But `[5, JOKER, 8]` could be a valid sequence if the joker fills 6 or 7. The function rejects it because the range (4) exceeds the card count (3). This is a **BUG** — joker-valid sequences can be rejected.
-
-Wait, `cards.length` is 3 (including the joker). `range = 8 - 5 + 1 = 4`. `4 <= 3` is false. So `isValidSequence` returns false. But `[5, JOKER, 8]` should be valid with the joker representing 6 or 7. Actually the joker can only represent one value, so `[5, JOKER, 8]` has non-jokers at 5 and 8, with one joker. The range from 5 to 8 is 4 cards (5, 6, 7, 8), but we only have 3 cards total. So this can't form a valid sequence because we'd need two jokers to fill both 6 and 7.
-
-Actually wait — `range <= cards.length` where range is the span of non-joker values. `[5, JOKER, 8]`: non-joker values are 5 and 8, range = 4 (5,6,7,8), cards.length = 3. `4 <= 3` is false. Correct — needs at least 4 cards to span 4 values.
-
-What about `[5, JOKER, JOKER, 8]`: non-joker values are 5 and 8, range = 4, cards.length = 4. `4 <= 4` is true. So `isValidSequence([5, JOKER, JOKER, 8])` = true.
-
-But what about `[5, 6, JOKER, 8]`: non-joker values = {5, 6, 8}, sorted = [5, 6, 8], range = 4, cards.length = 4. `4 <= 4` is true. Accepted. Correct — joker fills the 7.
-
-And `[5, 6, JOKER, 9]`: non-joker values = {5, 6, 9}, sorted = [5, 6, 9], range = 5, cards.length = 4. `5 <= 4` is false. But could the joker fill the gap between 6 and 9? The range is 5 cards (5,6,7,8,9) and we have 4 cards — a joker can only fill one value, so we'd need another card. Rejected correctly.
-
-So actually `range <= cards.length` is a correct necessary condition but might not be sufficient. Let me think of a case where it passes incorrectly:
-
-`[5, 5, 6, 7]`: non-joker values = {5, 6, 7} (duplicate 5 is dedup'd), sorted = [5, 6, 7], range = 3, cards.length = 4. `3 <= 4` is true. But `values.has(c.value)` would fail on the duplicate 5 because it's already in the set. So `isValidSequence` returns false because `c.suit !== suit`... wait, that's checked first. Let me re-read:
-
-```
-for (const c of nonJokers) {
-  if (c.suit !== suit) return false;
-  if (values.has(c.value)) return false;
-  values.add(c.value);
-}
-```
-
-The duplicate check `values.has(c.value)` returns true on the second 5, so the function returns false. Correct.
-
-So the range check is actually just a quick validation, and the duplicate suit/value checks handle the rest. The range check's job is to verify that cards span a range that could be filled by jokers.
-
-OK, so `isValidSequence` is actually correct for the cases I considered. Let me move on.
-
-105. isValidSequence might actually incorrectly reject some joker-containing combinations that have more jokers than needed — but the range check handles it correctly for all practical cases.
+105. `isValidSequence` might reject joker combinations where jokers outnumber the gap — but the range check correctly handles this; jokers fill specific missing values, not arbitrary gaps. *(no fix needed)*
 
 Let me compile more findings.
 
-106. `meld.test.ts` uses `Math.random()` for card IDs — non-deterministic test IDs make test failures harder to reproduce.
+106. ~~`meld.test.ts` uses `Math.random()` for card IDs — non-deterministic test IDs make test failures harder to reproduce.~~ **FIXED**: Replaced `Math.random()` with deterministic incrementing counter `cardId++`.
 
-107. The `combinations` function generates all subsets recursively — creating massive arrays for large inputs. For a 15-card hand with size 3, it generates C(15,3) = 455 combinations. But it's called for all sizes from 3 to 15.
+107. The `combinations` function generates all subsets recursively — creating massive arrays for large inputs. For a 15-card hand with size 3, it generates C(15,3) = 455 combinations. But it's called for all sizes from 3 to 15. *(algorithmic — combinations are inherent to meld detection; total subsets checked = 2^15 ≈ 32k, acceptable for a card game)*
 
 ## `src/lib/engine/utils.ts`
 
