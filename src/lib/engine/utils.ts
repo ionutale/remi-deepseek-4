@@ -1,6 +1,13 @@
 import type { Card } from './types';
 
+const memo = new Map<string, Card[][]>();
+const MAX_CACHE = 50_000;
+
 export function combinations(arr: Card[], size: number): Card[][] {
+	const key = `${arr.map((c) => c.id).join(',')}-${size}`;
+	const cached = memo.get(key);
+	if (cached) return cached;
+
 	if (size === 0) return [[]];
 	if (arr.length < size) return [];
 
@@ -14,5 +21,10 @@ export function combinations(arr: Card[], size: number): Card[][] {
 		result.push(combo);
 	}
 
+	if (memo.size < MAX_CACHE) memo.set(key, result);
 	return result;
+}
+
+export function clearCombinationsCache(): void {
+	memo.clear();
 }

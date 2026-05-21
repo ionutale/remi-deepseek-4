@@ -254,9 +254,9 @@ Let me compile more findings.
 
 ## `src/lib/engine/utils.ts`
 
-108. `combinations` function has no memoization — for repeated calls with the same cards, it recomputes from scratch.
+108. ~~`combinations` function has no memoization — for repeated calls with the same cards, it recomputes from scratch.~~ **FIXED**: Added module-level memo cache keyed by card IDs + size, with 50k entry limit and `clearCombinationsCache()`.
 
-109. `combinations` builds arrays via spread and concat — creates many intermediate array objects, increasing GC pressure.
+109. `combinations` builds arrays via spread and concat — creates many intermediate array objects, increasing GC pressure. *(by nature of combinatorial generation; spread/concat are idiomatic JS for this pattern — memoization partially mitigates redundant allocations)*
 
 ## `src/lib/components/Card.svelte`
 
