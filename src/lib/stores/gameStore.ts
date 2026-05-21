@@ -26,36 +26,51 @@ export function startGame(config: GameConfig) {
 export function playerDrawPile() {
 	gameState.update((state) => {
 		if (!state) return state;
-		let newState = drawFromPile(state);
-		newState = runAITurns(newState);
-		return newState;
+		try {
+			let newState = drawFromPile(state);
+			newState = runAITurns(newState);
+			return newState;
+		} catch {
+			return state;
+		}
 	});
 }
 
 export function playerDrawDiscard() {
 	gameState.update((state) => {
 		if (!state) return state;
-		let newState = drawFromDiscard(state);
-		newState = runAITurns(newState);
-		return newState;
+		try {
+			let newState = drawFromDiscard(state);
+			newState = runAITurns(newState);
+			return newState;
+		} catch {
+			return state;
+		}
 	});
 }
 
 export function playerDiscard(cardId: string) {
 	gameState.update((state) => {
 		if (!state) return state;
-		let newState = discardCard(state, cardId);
-		if (newState.phase === 'finished') return newState;
-		newState = runAITurns(newState);
-		return newState;
+		try {
+			let newState = discardCard(state, cardId);
+			if (newState.phase === 'finished') return newState;
+			newState = runAITurns(newState);
+			return newState;
+		} catch {
+			return state;
+		}
 	});
 }
 
 export function playerClose() {
 	gameState.update((state) => {
 		if (!state) return state;
-		const newState = closeGame(state);
-		return newState;
+		try {
+			return closeGame(state);
+		} catch {
+			return state;
+		}
 	});
 }
 

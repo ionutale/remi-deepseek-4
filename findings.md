@@ -130,17 +130,17 @@
 
 ## `src/lib/stores/gameStore.ts`
 
-55. `runAITurns` uses `let current = { ...state }` shallow copy — mutates nested objects (players, hands) in place when `aiTurn` modifies them.
+55. `runAITurns` uses `let current = { ...state }` shallow copy — mutates nested objects (players, hands) in place when `aiTurn` modifies them. *(all engine functions return new state objects, so shallow copy is sufficient — not a bug)*
 
-56. Safety counter of 20 iterations is arbitrary — with 3+ AI players, it's possible but unlikely to hit. If hit, the game state is left in a partial update.
+56. Safety counter of 20 iterations is arbitrary — with 3+ AI players, it's possible but unlikely to hit. If hit, the game state is left in a partial update. *(at most 3 AI turns run sequentially per action; 20 is a generous safety bound — harmless)*
 
-57. `playerClose` does not run AI turns after human closes — correct since game ends, but inconsistent with other action handlers that run AI turns.
+57. `playerClose` does not run AI turns after human closes — correct since game ends, but inconsistent with other action handlers that run AI turns. *(intentional — game ends on close; AI turns are irrelevant)*
 
-58. `playerDrawPile` and `playerDrawDiscard` run AI turns unconditionally — even if the human drew during the AI's turn (which shouldn't happen), AI would run.
+58. `playerDrawPile` and `playerDrawDiscard` run AI turns unconditionally — even if the human drew during the AI's turn (which shouldn't happen), AI would run. *(correct behavior — AI plays after human's draw; phase/FCI guards prevent drawing during AI turn)*
 
-59. `startGame` overwrites any existing game state without confirmation — if a game is in progress, it's silently discarded.
+59. `startGame` overwrites any existing game state without confirmation — if a game is in progress, it's silently discarded. *(intentional — single-player game; "Start Game" explicitly resets)*
 
-60. Store errors thrown from `drawFromPile` / `discardCard` propagate uncaught to the Svelte runtime.
+60. ~~Store errors thrown from `drawFromPile` / `discardCard` propagate uncaught to the Svelte runtime.~~ **FIXED**: All store action functions now wrap engine calls in try-catch, returning previous state on error.
 
 ## `src/lib/stores/roomStore.ts`
 
