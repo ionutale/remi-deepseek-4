@@ -202,37 +202,37 @@
 
 ## `src/lib/engine/game.ts`
 
-86. `drawFromPile` validates `state.phase !== 'draw'` but `drawFromDiscard` doesn't — the function itself does validate, but `drawFromPile` is called with the same validation.
+86. `drawFromPile` validates `state.phase !== 'draw'` but `drawFromDiscard` doesn't — the function itself does validate, but `drawFromPile` is called with the same validation. *(both functions actually validate — `drawFromDiscard` also checks `state.phase !== 'draw'` on line 68)*
 
-87. `reshuffleDiscard` always keeps the top card of the discard pile — if the discard pile has only 1 card, `drawPile` is empty, and the next `drawFromPile` call throws.
+87. `reshuffleDiscard` always keeps the top card of the discard pile — if the discard pile has only 1 card, `drawPile` is empty, and the next `drawFromPile` call throws. *(guard `discardPile.length <= 1` prevents reshuffle; throw on empty is correct — no cards remain in play)*
 
-88. `reshuffleDiscard` reveals card order information — the re-shuffled discard pile is placed face-down but the order was visible to players who watched the discards.
+88. `reshuffleDiscard` reveals card order information — the re-shuffled discard pile is placed face-down but the order was visible to players who watched the discards. *(all discards are public in Rummy — order visibility is not a concern)*
 
-89. `discardCard` removes a card by ID from the hand — but the game table UI also shows cards in "meld slots" that are still in the hand array. Discarding a card visually in a meld slot would remove it from the hand.
+89. `discardCard` removes a card by ID from the hand — but the game table UI also shows cards in "meld slots" that are still in the hand array. Discarding a card visually in a meld slot would remove it from the hand. *(UI concern — meld slots are a visual abstraction; cards remain in the hand array per game logic)*
 
-90. `closeGame` requires hand length of exactly 15 cards — meaning the player can only close at the start of their turn (before drawing). After drawing (16 cards), they must discard and wait for their next turn.
+90. ~~`closeGame` requires hand length of exactly 15 cards — meaning the player can only close at the start of their turn (before drawing). After drawing (16 cards), they must discard and wait for their next turn.~~ **FIXED** (resolved alongside #84 — hand size is 14, player draws to 15, `canFormValidClose` checks `HAND_SIZE + 1 = 15`, so close is after drawing).
 
-91. `nextTurn` always sets phase to `'draw'` — if a player could close during the discard phase, the phase would still advance.
+91. `nextTurn` always sets phase to `'draw'` — if a player could close during the discard phase, the phase would still advance. *(`closeGame` returns directly without calling `nextTurn` — no phase advance issue)*
 
-92. `drawFromPile` uses `drawPile[drawPile.length - 1]` (last element) — deck is used top-to-last, which is correct but means `shuffle` order is the draw order.
+92. `drawFromPile` uses `drawPile[drawPile.length - 1]` (last element) — deck is used top-to-last, which is correct but means `shuffle` order is the draw order. *(convention — array end as deck top; functionally equivalent to drawing from index 0)*
 
 ## `src/lib/engine/ai.ts`
 
-93. `hasMeldContaining` brute-forces all combinations of every possible size — O(2^n) complexity. For a 15-card hand, this is checking 32,767 subsets per call.
+93. `hasMeldContaining` brute-forces all combinations of every possible size — O(2^n) complexity. For a 15-card hand, this is checking 32,767 subsets per call. *(algorithmic — meld detection is combinatorial by nature; optimization would require a different approach)*
 
-94. `countMeldableCards` also iterates all combinations — O(2^n) and called once per card in `findWorstCard`, making it O(n \* 2^n).
+94. `countMeldableCards` also iterates all combinations — O(2^n) and called once per card in `findWorstCard`, making it O(n \* 2^n). *(same algorithmic concern as #93; performance acceptable for 14-15 card hands)*
 
-95. `findWorstCard` recomputes meldability from scratch for every card — could cache results.
+95. `findWorstCard` recomputes meldability from scratch for every card — could cache results. *(optimization opportunity; O(n·2^n) is acceptable for 14-card hands)*
 
-96. AI never forms melds or lays them on the table — only draws and discards, making the AI play sub-optimally.
+96. AI never forms melds or lays them on the table — only draws and discards, making the AI play sub-optimally. *(gameplay limitation — AI only knows draw/discard/close; no intermediate meld-laying)*
 
-97. AI closes during the draw phase (before drawing) — correct, but means the AI's closing logic is completely separate from the human's.
+97. AI closes during the draw phase (before drawing) — correct, but means the AI's closing logic is completely separate from the human's. *(AI checks close in both draw and discard phases; with 14-card deal, close only triggers in discard phase after drawing to 15)*
 
-98. `shouldDrawFromDiscard` only considers whether the card forms a meld — doesn't account for strategic value like blocking opponents.
+98. `shouldDrawFromDiscard` only considers whether the card forms a meld — doesn't account for strategic value like blocking opponents. *(gameplay limitation — basic AI strategy)*
 
-99. `aiTurn` discards the "worst" card based purely on meldability — doesn't consider what cards opponents might need.
+99. `aiTurn` discards the "worst" card based purely on meldability — doesn't consider what cards opponents might need. *(gameplay limitation — basic AI strategy)*
 
-100.  `aiTurn` doesn't handle the `'closing'` phase — it's a dead phase in the type system.
+100.  ~~`aiTurn` doesn't handle the `'closing'` phase — it's a dead phase in the type system.~~ **FIXED** (resolved alongside #78 — `'closing'` removed from `GamePhase`).
 
 ## `src/lib/engine/meld.ts`
 
