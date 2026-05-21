@@ -1,17 +1,28 @@
 import { nanoid } from 'nanoid';
 
-const sessions = new Map<string, string>();
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+interface SessionEntry {
+	token: string;
+	expiresAt: number;
+}
+
+const sessions = new Map<string, SessionEntry>();
 
 export function createSession(playerId: string): string {
 	const token = nanoid(20);
-	sessions.set(playerId, token);
+	sessions.set(playerId, { token, expiresAt: Date.now() + SESSION_TTL_MS });
 	return token;
 }
 
 export function verifySession(playerId: string, token: string): boolean {
-	const stored = sessions.get(playerId);
-	if (!stored) return false;
-	return stored === token;
+	const entry = sessions.get(playerId);
+	if (!entry) return false;
+	if (Date.now() > entry.expiresAt) {
+		sessions.delete(playerId);
+		return false;
+	}
+	return entry.token === token;
 }
 
 export function destroySession(playerId: string): void {

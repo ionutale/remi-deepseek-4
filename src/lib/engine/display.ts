@@ -1,14 +1,16 @@
-import type { Card } from './types';
+import type { Card, Value } from './types';
+
+function valueToString(v: Value): string {
+	if (v === 1) return 'A';
+	if (v === 11) return 'J';
+	if (v === 12) return 'Q';
+	if (v === 13) return 'K';
+	return String(v);
+}
 
 export function cardLabel(card: Pick<Card, 'value' | 'isJoker' | 'suit'>): string {
 	if (card.isJoker) return '🃏';
-	const value =
-		card.value === 1 ? 'A' :
-		card.value === 11 ? 'J' :
-		card.value === 12 ? 'Q' :
-		card.value === 13 ? 'K' :
-		String(card.value);
-	return `${value}${card.suit}`;
+	return `${valueToString(card.value)}${card.suit}`;
 }
 
 export function isRed(suit: string): boolean {
@@ -17,9 +19,5 @@ export function isRed(suit: string): boolean {
 
 export function displayValue(card: Pick<Card, 'value' | 'isJoker'>): string {
 	if (card.isJoker) return '🃏';
-	return card.value === 1 ? 'A' :
-		card.value === 11 ? 'J' :
-		card.value === 12 ? 'Q' :
-		card.value === 13 ? 'K' :
-		String(card.value);
+	return valueToString(card.value);
 }

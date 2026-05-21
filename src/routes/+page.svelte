@@ -16,7 +16,7 @@
 	let name = $state('');
 	let code = $state('');
 	let maxPlayers = $state<2 | 3 | 4>(4);
-	let errors = $state<string[]>([]);
+	let error = $state('');
 	let rooms = $state<Room[]>([]);
 	let loading = $state(false);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -60,44 +60,44 @@
 
 	async function handleCreate() {
 		if (!name.trim()) {
-			errors = ['Enter your name'];
+			error = 'Enter your name';
 			return;
 		}
-		errors = [];
+		error = '';
 		const data = await createRoom(name.trim(), maxPlayers);
 		if (data.code) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${data.code}`);
 		} else {
-			errors = [data.error || 'Failed to create room'];
+			error = data.error || 'Failed to create room';
 		}
 	}
 
 	async function handleJoin() {
 		if (!name.trim()) {
-			errors = ['Enter your name'];
+			error = 'Enter your name';
 			return;
 		}
 		if (!code.trim()) {
-			errors = ['Enter room code'];
+			error = 'Enter room code';
 			return;
 		}
-		errors = [];
+		error = '';
 		const data = await joinRoom(code.trim().toUpperCase(), name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${code.trim().toUpperCase()}`);
 		} else {
-			errors = [data.error || 'Failed to join room'];
+			error = data.error || 'Failed to join room';
 		}
 	}
 
 	async function handleQuickMatch() {
 		if (!name.trim()) {
-			errors = ['Enter your name'];
+			error = 'Enter your name';
 			return;
 		}
-		errors = [];
+		error = '';
 		await quickJoin(name.trim());
 	}
 
@@ -114,16 +114,16 @@
 
 	async function handleJoinRoom(roomCode: string) {
 		if (!name.trim()) {
-			errors = ['Enter your name first'];
+			error = 'Enter your name first';
 			return;
 		}
-		errors = [];
+		error = '';
 		const data = await joinRoom(roomCode, name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${roomCode}`);
 		} else {
-			errors = [data.error || 'Failed to join room'];
+			error = data.error || 'Failed to join room';
 		}
 	}
 </script>
@@ -141,21 +141,21 @@
 					class="tab-lg tab {tab === 'create' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'create';
-						errors = [];
+						error = '';
 					}}>Create</button
 				>
 				<button
 					class="tab-lg tab {tab === 'join' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'join';
-						errors = [];
+						error = '';
 					}}>Join</button
 				>
 				<button
 					class="tab-lg tab {tab === 'browse' ? 'tab-active' : ''}"
 					onclick={() => {
 						tab = 'browse';
-						errors = [];
+						error = '';
 					}}>Browse</button
 				>
 			</div>
@@ -269,10 +269,8 @@
 				</div>
 			{/if}
 
-			{#if errors.length > 0}
-				{#each errors as err}
-					<p class="text-sm text-error">{err}</p>
-				{/each}
+			{#if error}
+				<p class="text-sm text-error">{error}</p>
 			{/if}
 		</div>
 	</div>

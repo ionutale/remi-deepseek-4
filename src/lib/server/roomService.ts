@@ -152,4 +152,3 @@ export function stopCleanupTimer(): void {
 		cleanupTimer = null;
 	}
 }
-startCleanupTimer();

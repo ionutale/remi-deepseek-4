@@ -143,8 +143,6 @@ export function stopCleanupTimer(): void {
 		cleanupTimer = null;
 	}
 }
-startCleanupTimer();
-
 export function getQueueSize(): number {
 	return queue.length;
 }
