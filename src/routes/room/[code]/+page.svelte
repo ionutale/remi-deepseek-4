@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { derived, get } from 'svelte/store';
 	import {
 		room,
 		playerId,
@@ -16,10 +17,15 @@
 		reset
 	} from '$lib/stores/roomStore';
 	import { canFormValidClose } from '$lib/engine/meld';
+	import { HAND_SIZE } from '$lib/engine/deck';
 	import { drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
-	import { derived } from 'svelte/store';
-	import { cardLabel } from '$lib/engine/display';
-	import type { Card } from '$lib/engine/types';
+	import type { Card, MeldType } from '$lib/engine/types';
+	import MeldArea from '$lib/components/MeldArea.svelte';
+	import PlayerHand from '$lib/components/PlayerHand.svelte';
+	import DrawPile from '$lib/components/DrawPile.svelte';
+	import DiscardPile from '$lib/components/DiscardPile.svelte';
+
+	const MAX_MELD_SLOTS = Math.ceil(HAND_SIZE / 3) + 2;
 
 	let code = $derived($page.params.code);
 
@@ -50,11 +56,88 @@
 	);
 	const gamePhase = derived(currentGameState, ($gs) => $gs?.phase ?? 'idle');
 
-	const canClose = derived([currentGameState, myIndex, myPlayerState], ([$gs, $idx, $ps]) => {
-		if (!$gs || !$ps || $gs.phase === 'finished') return false;
-		return $gs.currentPlayerIndex === $idx && canFormValidClose($ps.hand);
+	const opponents = derived([room, playerId, currentGameState], ([$room, $pid, $gs]) => {
+		if (!$room || !$gs) return [];
+		return $room.players
+			.map((p, i) => ({
+				...p,
+				handCount: $gs.players[i]?.hand.length ?? 0,
+				isActive: i === $gs.currentPlayerIndex
+			}))
+			.filter((p) => p.id !== $pid);
 	});
 
+	// — Meld slot state (local staging, not sent to server) —
+	let meldSlots = $state<Card[][]>(Array.from({ length: MAX_MELD_SLOTS }, () => []));
+	let selectedCardId = $state<string | null>(null);
+
+	const assignedCardIds = $derived(new Set(meldSlots.flat().map((c) => c.id)));
+	const remainingHand = $derived($myHand.filter((c) => !assignedCardIds.has(c.id)));
+	const meldList = $derived(
+		meldSlots.map((cards) => {
+			if (cards.length === 0) return null;
+			const nonJokers = cards.filter((c) => !c.isJoker);
+			const allSameValue =
+				nonJokers.length > 0 && nonJokers.every((c) => c.value === nonJokers[0]?.value);
+			const allSameSuit =
+				nonJokers.length > 0 && nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
+			const type: MeldType = allSameValue ? 'set' : allSameSuit ? 'sequence' : 'set';
+			return { cards, type };
+		})
+	);
+
+	const canClose = $derived(
+		$currentGameState !== null &&
+			$gamePhase !== 'finished' &&
+			$isMyTurn &&
+			canFormValidClose($myHand)
+	);
+
+	// Clear staging when it stops being my turn
+	$effect(() => {
+		if (!$isMyTurn) {
+			meldSlots = Array.from({ length: MAX_MELD_SLOTS }, () => []);
+			selectedCardId = null;
+		}
+	});
+
+	// — Meld slot helpers —
+	function addCardToSlot(slotIndex: number, cardId: string) {
+		const card = $myHand.find((c) => c.id === cardId);
+		if (!card) return;
+		meldSlots[slotIndex] = [...meldSlots[slotIndex], card];
+	}
+
+	function removeCardFromSlot(cardId: string) {
+		for (let i = 0; i < meldSlots.length; i++) {
+			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
+			if (idx >= 0) {
+				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
+				return;
+			}
+		}
+	}
+
+	function moveMeld(fromIndex: number, toIndex: number) {
+		if (fromIndex === toIndex || toIndex < 0 || toIndex >= meldSlots.length) return;
+		const tmp = meldSlots[fromIndex];
+		meldSlots[fromIndex] = meldSlots[toIndex];
+		meldSlots[toIndex] = tmp;
+	}
+
+	function moveCardToSlot(cardId: string, toSlotIndex: number) {
+		for (let i = 0; i < meldSlots.length; i++) {
+			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
+			if (idx >= 0) {
+				const card = meldSlots[i][idx];
+				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
+				meldSlots[toSlotIndex] = [...meldSlots[toSlotIndex], card];
+				return;
+			}
+		}
+	}
+
+	// — Game action handlers —
 	onDestroy(() => {
 		stopPolling();
 		reset();
@@ -66,48 +149,41 @@
 	}
 
 	async function handleDrawPile() {
-		const gs = await getCurrentGS();
+		const gs = get(currentGameState);
 		if (!gs) return;
-		const newState = drawFromPile(gs);
-		await sendGameState(newState);
+		await sendGameState(drawFromPile(gs));
 	}
 
 	async function handleDrawDiscard() {
-		const gs = await getCurrentGS();
+		const gs = get(currentGameState);
 		if (!gs) return;
-		const newState = drawFromDiscard(gs);
-		await sendGameState(newState);
+		await sendGameState(drawFromDiscard(gs));
 	}
 
 	async function handleDiscard(cardId: string) {
-		const gs = await getCurrentGS();
+		const gs = get(currentGameState);
 		if (!gs) return;
+		removeCardFromSlot(cardId);
+		selectedCardId = null;
 		try {
-			const newState = discardCard(gs, cardId);
-			await sendGameState(newState);
+			await sendGameState(discardCard(gs, cardId));
 		} catch {
 			console.error('Failed to discard card', cardId);
 		}
 	}
 
+	async function handleDiscardSelected() {
+		if (selectedCardId) await handleDiscard(selectedCardId);
+	}
+
 	async function handleClose() {
-		const gs = await getCurrentGS();
+		const gs = get(currentGameState);
 		if (!gs) return;
 		try {
-			const newState = closeGame(gs);
-			await sendGameState(newState);
+			await sendGameState(closeGame(gs));
 		} catch {
 			console.error('Failed to close game');
 		}
-	}
-
-	function getCurrentGS(): Promise<import('$lib/engine/types').GameState | null> {
-		return new Promise((resolve) => {
-			const unsub = currentGameState.subscribe((gs) => {
-				unsub();
-				resolve(gs);
-			});
-		});
 	}
 </script>
 
@@ -147,93 +223,131 @@
 						{/if}
 					{/if}
 
-					{#if $roomStatus === 'waiting'}
-						<button class="btn btn-ghost btn-sm" onclick={handleLeave}>Leave room</button>
-					{/if}
+					<button class="btn btn-ghost btn-sm" onclick={handleLeave}>Leave room</button>
 				</div>
 			</div>
 		</div>
 	{:else if $roomStatus === 'playing' && $currentGameState}
-		<div class="mx-auto max-w-xl">
-			<div class="mb-4 flex items-center justify-between">
+		<div class="flex min-h-screen flex-col bg-linear-to-br from-green-800 to-green-900 -m-4 p-2 sm:p-4">
+
+			<!-- Header -->
+			<div class="flex items-center justify-between px-2 py-1">
 				<div class="flex items-center gap-2">
-					<span class="badge badge-lg badge-primary">{code}</span>
-					<span class="text-sm text-base-content/60">
-						{$players.map((p) => p.name).join(', ')}
-					</span>
+					<span class="badge badge-lg badge-primary font-mono">{code}</span>
 				</div>
-				<div class="flex items-center gap-2">
-					<span class="text-sm">Pile: {$drawCount}</span>
-					<span class="badge badge-{$isMyTurn ? 'success' : 'ghost'}">
+				<div class="flex items-center gap-3">
+					<span class="text-sm text-white/80">Pile: {$drawCount}</span>
+					<span class="badge {$isMyTurn ? 'badge-success' : 'badge-ghost'}">
 						{$isMyTurn ? 'Your turn' : 'Waiting...'}
 					</span>
+					<button class="btn btn-ghost btn-xs text-white/60" onclick={handleLeave}>Leave</button>
 				</div>
 			</div>
 
-			<div class="card bg-base-100 shadow-xl">
-				<div class="card-body items-center gap-4">
-					<div class="flex min-h-[4rem] w-full flex-wrap justify-center rounded-box bg-base-200 p-4">
-						{#each $myHand as card (card.id)}
-							<div class="rounded border bg-white px-3 py-1.5 text-sm font-bold shadow-sm">
-								{cardLabel(card)}
+			<!-- Opponents -->
+			{#if $opponents.length > 0}
+				<div class="flex justify-center gap-4 py-2">
+					{#each $opponents as opp (opp.id)}
+						<div class="flex flex-col items-center gap-1">
+							<div class="badge badge-lg {opp.isActive ? 'badge-primary' : 'badge-neutral'}">
+								{opp.name}
 							</div>
-						{/each}
-					</div>
-
-					<div class="flex flex-wrap justify-center gap-2">
-						{#if $gamePhase === 'draw'}
-							<button
-								class="btn btn-primary"
-								onclick={handleDrawPile}
-								disabled={!$isMyTurn || $drawCount === 0}
-							>
-								Draw from Pile
-							</button>
-							<button
-								class="btn btn-secondary"
-								onclick={handleDrawDiscard}
-								disabled={!$isMyTurn || !$topDiscard}
-							>
-								Draw from Discard
-							</button>
-						{/if}
-						{#if $canClose}
-							<button class="btn btn-success" onclick={handleClose}>Close Game</button>
-						{/if}
-					</div>
-
-					{#if $gamePhase === 'discard' && $isMyTurn}
-						<div class="w-full">
-							<h4 class="mb-2 text-xs font-semibold text-base-content/60">
-								Select a card to discard
-							</h4>
-							<div class="flex flex-wrap justify-center gap-2">
-								{#each $myHand as card (card.id)}
-									<button class="btn btn-outline btn-sm" onclick={() => handleDiscard(card.id)}>
-										{cardLabel(card)}
-									</button>
+							<div class="flex">
+								{#each { length: opp.handCount } as _, i (i)}
+									<div
+										class="h-8 w-5 rounded border border-blue-300 bg-linear-to-br from-blue-400 to-blue-600 shadow"
+										style="margin: 0 -3px;"
+									></div>
 								{/each}
 							</div>
+							<span class="text-xs text-white/60">{opp.handCount} cards</span>
 						</div>
-					{/if}
-
-					<div class="w-full">
-						<h4 class="mb-1 text-xs font-semibold text-base-content/60">Discard Pile</h4>
-						<div class="flex min-h-[3rem] flex-wrap gap-2 rounded-box bg-base-200 p-2">
-							{#each $currentGameState.discardPile as card (card.id)}
-								<div class="rounded bg-white px-2 py-1 text-xs font-bold shadow-sm">
-									{cardLabel(card)}
-								</div>
-							{/each}
-						</div>
-					</div>
-
-					<div class="flex w-full justify-between text-xs text-base-content/40">
-						<span>Phase: {$gamePhase}</span>
-						<span>You: Player {$myIndex + 1}</span>
-						<span>Current: Player {$currentGameState.currentPlayerIndex + 1}</span>
-					</div>
+					{/each}
 				</div>
+			{/if}
+
+			<!-- Draw / Discard piles -->
+			<div class="flex items-center justify-center gap-8 py-3">
+				<div class="flex flex-col items-center gap-1">
+					<DrawPile
+						cardCount={$drawCount}
+						disabled={!$isMyTurn || $gamePhase !== 'draw'}
+						ondraw={handleDrawPile}
+					/>
+					<span class="text-xs font-medium text-white/70">Draw Pile</span>
+				</div>
+				<div class="flex flex-col items-center gap-1">
+					<DiscardPile
+						topCard={$topDiscard}
+						count={$currentGameState.discardPile.length}
+						disabled={!$isMyTurn || $gamePhase !== 'draw'}
+						ondraw={handleDrawDiscard}
+					/>
+					<span class="text-xs font-medium text-white/70">Discard Pile</span>
+				</div>
+			</div>
+
+			<!-- Action buttons -->
+			{#if $isMyTurn}
+				<div class="flex justify-center gap-2 pb-2">
+					{#if $gamePhase === 'discard'}
+						<button
+							class="btn btn-warning btn-sm"
+							onclick={handleDiscardSelected}
+							disabled={!selectedCardId}
+						>
+							Discard {selectedCardId ? '✓' : 'a card'}
+						</button>
+					{/if}
+					{#if canClose}
+						<button class="btn btn-success btn-sm" onclick={handleClose}>Close Game</button>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Meld staging area -->
+			<div class="py-1">
+				<p class="mb-1 text-center text-xs text-white/40">
+					Drag cards here to organise melds — drag a group to reorder
+				</p>
+				<MeldArea
+					melds={meldList}
+					oncarddrop={(e, i) => {
+						const cardId = e.dataTransfer?.getData('text/card-id');
+						if (cardId) addCardToSlot(i, cardId);
+					}}
+					onmelddrop={(_e, from, to) => moveMeld(from, to)}
+					oncardmovetomeld={(cardId, to) => moveCardToSlot(cardId, to)}
+					oncardback={(id) => removeCardFromSlot(id)}
+				/>
+			</div>
+
+			<!-- Player hand -->
+			<div class="border-t border-white/10 pt-2">
+				<p class="mb-1 text-center text-xs text-white/40">
+					{$gamePhase === 'discard' && $isMyTurn
+						? 'Click a card to select it for discard, or drag to a meld slot above'
+						: 'Your hand'}
+				</p>
+				<PlayerHand
+					cards={remainingHand}
+					disabled={!$isMyTurn || $gamePhase !== 'discard'}
+					{selectedCardId}
+					onselect={(id) => {
+						if ($isMyTurn && $gamePhase === 'discard') selectedCardId = id;
+					}}
+					oncarddrop={(e) => {
+						const cardId = e.dataTransfer?.getData('text/card-id');
+						if (cardId) removeCardFromSlot(cardId);
+					}}
+				/>
+			</div>
+
+			<!-- Status bar -->
+			<div class="flex justify-between px-2 py-1 text-xs text-white/50">
+				<span>Phase: {$gamePhase}</span>
+				<span>You: Player {$myIndex + 1}</span>
+				<span>Current: Player {$currentGameState.currentPlayerIndex + 1}</span>
 			</div>
 		</div>
 	{:else if $roomStatus === 'finished' && $currentGameState}

@@ -527,3 +527,70 @@ Let me compile more findings.
 - **#17–#109**: Component, engine, and logic findings — **ALL FIXED** (prior work + current session)
 - **#110–#215**: Component, route, test, config, and cross-cutting — **ALL FIXED** (current session)
 - **Remaining items** (marked with `*(...)`) are design notes, intentional choices, or out-of-scope concerns
+
+---
+
+## New Findings (May 2026 — deep audit)
+
+### Critical
+
+216. **MMR double-recorded** — `roomService.ts:97` calls `recordResult(winnerId, loserId)` inside `updateGameState` whenever a finished game state is submitted via PUT. Separately, `result/+server.ts:50` calls `recordResult` on POST to the result endpoint. The `recordedRooms` deduplication Map only covers the result endpoint path. Since `recordResult` applies Elo calculations (`delta = K * (1 - expected)`), the MMR delta is **applied twice** for the same match. **Impact**: MMR inflation — both players' ratings shift twice as much as intended.
+
+217. **Server crashes on forged `winner` index** — `roomService.ts:96` accesses `room.players[state.winner]` without bounds checking. A malicious client can:
+   - Send `PUT /api/rooms/[code]` with `gameState.winner = 5` in a 2-player game → `room.players[5]` is `undefined` → `room.players[5].id` throws `TypeError`
+   - Send `winner: -1` → `room.players[1 - (-1)]` = `room.players[2]` → same crash
+   - Same vulnerability in `result/+server.ts:46-47` (`room.players[1 - winnerIdx]`)
+   **Impact**: Server crash, denial of service for all active games.
+
+218. **Client can forge any game state** — `roomService.ts:89-104` (`updateGameState`) blindly sets `room.gameState = state` with **zero server-side validation**. A client with a valid `sessionToken` can:
+   - Set any cards in their hand
+   - Set `winner` to any index (see #217)
+   - Re-wind game state to undo opponent's moves
+   - The only "validation" is the session check and player-in-room check (`room.players.some(p => p.id === playerId)`)
+   **Impact**: Any player can cheat in multiplayer games — no server authority over game logic.
+
+219. **Race condition in `getCurrentGS` subscription** — `room/[code]/+page.svelte:104-111` creates a new `currentGameState.subscribe()` Promise per action call. If a user triggers two actions in rapid succession (e.g. double-clicks "Discard"), both calls receive the **same** GameState snapshot, operate on it independently, and both `sendGameState` calls send the same pre-first-action state. The second PUT overwrites the first on the server. **Impact**: Player actions are silently lost. Reproducible with rapid clicking.
+
+220. **Multiplayer state overwrite race** — `roomStore.ts:110-121` sends the full GameState to `PUT /api/rooms/[code]`, which sets `room.gameState = state` (line 92). If two players submit simultaneously, the last PUT wins regardless of whose turn it is. **Impact**: State corruption in multiplayer — one player's action can undo another's.
+
+### Security
+
+221. **Null origin bypasses CSRF protection** — `hooks.server.ts:28-30`: `isAllowedOrigin` returns `true` when `origin` is `null` (no `Origin` header). Server-to-server requests, curl, Postman, and some browser requests (e.g. `no-cors` mode, extension background scripts) have no `Origin` header, bypassing CSRF. **Impact**: Weakens CSRF protection; state-changing endpoints can be called cross-origin without the header.
+
+222. **Rate limiter Map grows unbounded** — `hooks.server.ts:9` uses `Map<string, { count, resetAt }>` with no cleanup. Entries for IPs that never request again stay in memory forever. For a public server serving thousands of unique IPs daily, this leaks memory proportional to unique visitor count. **Impact**: Deployments with high traffic will eventually OOM.
+
+223. **`playerId` leaked in matchmaking GET** — `matchStore.ts:48` sends `playerId` as a URL query parameter (`/api/matchmaking?playerId=${currentPlayerId}`). `playerId` values appear in:
+   - Server access logs (the full URL is logged)
+   - Browser history (no `POST` concealment)
+   - Referrer headers (when navigating from the matchmaking page)
+   - Network tab (visible to any page script)
+   **Impact**: Player identity is trivially observed by anyone with access to logs. Low severity since `playerId` requires `sessionToken` for auth, but defeats the purpose of session-based auth.
+
+### Bugs
+
+224. **Dead code in `playerDiscard`** — `gameStore.ts:57`: `if (newState.phase === 'finished') return newState;` is always false. `discardCard` calls `nextTurn` internally, which sets `phase: 'draw'`. A human discarding can never finish the game; only `closeGame` sets `phase: 'finished'`. **Impact**: Unreachable code path, no behavioral impact.
+
+225. **`db.ts` is dead code** — `src/lib/server/db.ts` defines `connectDB()`, `getDB()`, and `disconnectDB()`, but no code imports or calls any of these functions (the `hooks.server.ts` call was removed per #215). The module still imports `MongoClient` and `$env/static/private`, which will throw at startup if env vars are missing — even though the DB is never used. **Impact**: If `MONGODB_URL` or `MONGODB_DB` env vars are not set, SvelteKit's module resolution may fail when `db.ts` is traversed during build. Also `mongodb` and `mongoose` should be removed from `package.json`.
+
+226. **`nanoid` still v3 in `package.json`** — Per #208, this was "FIXED: Switched to nanoid v5". But `package.json` still lists `"nanoid": "^3.3.12"`. The actual `import { nanoid } from 'nanoid'` statements in source files work because bundlers may resolve to a compatible version or the lockfile may pin v3. **Impact**: If `^3.3.12` is resolved during install, CJS-only nanoid v3 is used in an ESM project — future bundler updates may break.
+
+227. **`handleClose` in GameTable throws silently** — `GameTable.svelte:108-114` wraps `playerClose()` in try-catch with `console.error`. But `playerClose()` in `gameStore.ts:66-75` also wraps `closeGame(state)` in try-catch with a silent `catch { return state; }`. The store-level catch swallows the error before GameTable's catch sees it. **Impact**: `GameTable`s error boundary is dead code — no error from `playerClose` can reach it.
+
+### Bad Practices
+
+228. **Card IDs are predictable and duplicated across games** — `deck.ts:13-14` uses `${suit}-${value}-0` / `${suit}-${value}-1` format. Every game's `♠-A` card has ID `♠-1-0`. The `combinations` memo cache (keyed by `card.id`) could theoretically serve stale cross-game results if two games' computations interleave. **Impact**: Low risk in single-threaded JS, but the cache is global and not scoped to a game instance.
+
+229. **`getCurrentGS()` creates a subscription leak on rapid calls** — `room/[code]/+page.svelte:104-111`: if `handleDrawPile()` is called, it creates a Promise + subscribe. If the user navigates away before the Promise resolves, the subscription is never unsubscribed (the `onDestroy` calls `stopPolling()` but not `getCurrentGS` cleanup). **Impact**: Small memory leak on rapid page navigation during game actions.
+
+230. **All error handling is silent** — Across the codebase:
+   - `matchStore.ts:60-62`: `catch { /* ignore */ }` — polling failures are invisible
+   - `roomStore.ts:19-28`: `catch (e) { console.error('Room polling failed:', e); }` — logged but no user feedback
+   - `+page.svelte:55-57`: `catch { /* ignore */ }` — room listing fetch failures
+   - `gameStore.ts:33-35, 47-49, 61-63, 71-73`: all errors silently reverted to previous state
+   **Impact**: Users see no feedback when the server is unreachable or actions fail.
+
+231. **`leaveQueue` state reset on failed request** — `matchStore.ts:73-84`: `stopPolling()` is called before the fetch. If the fetch fails, polling is already stopped but server still thinks the player is queued. The `if (!res.ok) return;` prevents state reset on failure, but polling can't resume because `stopPolling()` already cleared the timer. **Impact**: Player appears de-queued in UI but remains queued on server — stuck state.
+
+232. **`handleLeave` clears stores before navigation completes** — `room/[code]/+page.svelte:63-66`: `reset()` stops polling and nulls all stores, then `goto('/')`. If `goto('/')` fails (e.g., network error), the stores are already cleared — the user is left on a blank page with no way to recover. **Impact**: Navigation failure leaves UI in unrecoverable state.
+
+233. **No cleanup on `getCurrentGS` subscription** — `room/[code]/+page.svelte:106`: `unsub()` is called inside the subscribe callback. If the store never emits a value (theoretically impossible for a derived store, but possible with writable stores that have no value yet), the subscription is never cleaned up. **Impact**: Theoretical leak — in current code all stores have initial values, so not triggered.
