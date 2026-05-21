@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Card as CardType } from '$lib/engine/types';
+	import type { Card } from '$lib/engine/types';
 	import Card from './Card.svelte';
 
 	let {
@@ -7,38 +7,46 @@
 		disabled = false,
 		selectedCardId = null,
 		onselect,
-		oncarddrop,
-		ondragstart
+		oncarddrop
 	}: {
-		cards: CardType[];
+		cards: Card[];
 		disabled?: boolean;
 		selectedCardId?: string | null;
 		onselect?: (cardId: string) => void;
 		oncarddrop?: (e: DragEvent) => void;
-		ondragstart?: (e: DragEvent, card: CardType) => void;
 	} = $props();
+
+	let dragOver = $state(false);
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
+		dragOver = true;
+	}
+
+	function handleDragLeave() {
+		dragOver = false;
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
+		dragOver = false;
 		oncarddrop?.(e);
 	}
 
-	function handleCardDragStart(e: DragEvent, card: CardType) {
+	function handleCardDragStart(e: DragEvent, card: Card) {
 		e.dataTransfer?.setData('text/card-id', card.id);
-		e.dataTransfer!.effectAllowed = 'move';
-		ondragstart?.(e, card);
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
 </script>
 
 <div
-	class="flex min-h-20 flex-wrap justify-center gap-1 rounded-xl border-2 border-dashed border-transparent p-4 transition-all sm:gap-2"
+	class="flex min-h-20 flex-wrap justify-center gap-1 rounded-xl border-2 p-4 transition-all sm:gap-2 {dragOver
+		? 'border-primary/50 bg-primary/5'
+		: 'border-dashed border-transparent'}"
 	role="region"
 	aria-label="Your hand — drop cards here to return from melds"
 	ondragover={handleDragOver}
+	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
 >
 	{#each cards as card (card.id)}
