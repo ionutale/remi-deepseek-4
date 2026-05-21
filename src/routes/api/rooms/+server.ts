@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { createRoom, getAllRooms } from '$lib/server/roomService';
+import { createSession, sanitizeName } from '$lib/server/auth';
 
 export async function POST({ request }) {
 	const { ownerName, maxPlayers } = await request.json();
@@ -8,8 +9,9 @@ export async function POST({ request }) {
 	}
 	const n = maxPlayers ?? 4;
 	const count: 2 | 3 | 4 = n <= 2 ? 2 : n >= 4 ? 4 : 3;
-	const room = createRoom(ownerName, count);
-	return json(room);
+	const room = createRoom(sanitizeName(ownerName), count);
+	const sessionToken = createSession(room.ownerId);
+	return json({ ...room, sessionToken });
 }
 
 export async function GET() {
