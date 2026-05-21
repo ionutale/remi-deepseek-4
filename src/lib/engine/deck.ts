@@ -14,7 +14,7 @@ export function createDeck(): Card[] {
 	}
 
 	for (let i = 0; i < 4; i++) {
-		cards.push({ suit: '♠', value: 0 as unknown as Value, id: `joker-${i}`, isJoker: true });
+		cards.push({ suit: '♠', value: 0, id: `joker-${i}`, isJoker: true });
 	}
 
 	return cards;

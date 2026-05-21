@@ -176,15 +176,15 @@
 
 ## `src/lib/engine/types.ts`
 
-75. `Value` type includes 1–13 but jokers use `value: 0 as unknown as Value` — type-unsafe hack that bypasses the type system.
+75. ~~`Value` type includes 1–13 but jokers use `value: 0 as unknown as Value` — type-unsafe hack that bypasses the type system.~~ **FIXED**: Added `0` to `Value` type union; removed `as unknown as Value` cast from `deck.ts`.
 
-76. `Suit` is typed as a union of four specific strings, but jokers use `'♠'` as their suit — jokers have an arbitrary suit that's never validated.
+76. `Suit` is typed as a union of four specific strings, but jokers use `'♠'` as their suit — jokers have an arbitrary suit that's never validated. *(jokers are always filtered out of suit/value validation via `isJoker` flag; suit assignment is cosmetic)*
 
-77. `Meld` type's `cards` includes jokers, making `isValidMeld` checks more complex — joker validation is distributed across multiple functions rather than encapsulated.
+77. `Meld` type's `cards` includes jokers, making `isValidMeld` checks more complex — joker validation is distributed across multiple functions rather than encapsulated. *(by design — jokers are valid meld members; validation correctly handles them)*
 
-78. `GamePhase` includes `'closing'` but no code ever sets or handles this phase — it's dead in the type definition.
+78. ~~`GamePhase` includes `'closing'` but no code ever sets or handles this phase — it's dead in the type definition.~~ **FIXED** (resolved in prior work — `'closing'` removed from `GamePhase`).
 
-79. `PlayerState.hasOpened` is never read or written anywhere — dead property.
+79. ~~`PlayerState.hasOpened` is never read or written anywhere — dead property.~~ **FIXED** (resolved in prior work — `hasOpened` removed from `PlayerState`).
 
 ## `src/lib/engine/deck.ts`
 
