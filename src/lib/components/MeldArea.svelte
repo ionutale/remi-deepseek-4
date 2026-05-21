@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Meld } from '$lib/engine/types';
 	import { isValidMeld } from '$lib/engine/meld';
-	import CardComp from './Card.svelte';
+	import { cardLabel, isRed } from '$lib/engine/display';
 
-	const DATA_MELD = '__meld__';
+	const COLS = 4;
 
 	let {
 		melds,
@@ -21,34 +21,38 @@
 		oncardback?: (cardId: string) => void;
 	} = $props();
 
-	const rows = 2;
-	const cols = 10;
+	const rows = $derived(Math.ceil(melds.length / COLS));
 
 	let dragOverSlot = $state<number | null>(null);
+	let draggingMeld = $state<number | null>(null);
 
 	function handleDragOver(e: DragEvent, slotIndex: number) {
 		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		dragOverSlot = slotIndex;
 	}
 
-	function handleDragLeave(_e: DragEvent, slotIndex: number) {
+	function handleDragLeave(e: DragEvent, slotIndex: number) {
+		// Only clear if actually leaving the slot (not moving to a child)
+		const related = e.relatedTarget as Element | null;
+		const target = e.currentTarget as Element | null;
+		if (target && related && target.contains(related)) return;
 		if (dragOverSlot === slotIndex) dragOverSlot = null;
 	}
 
 	function handleDrop(e: DragEvent, slotIndex: number) {
 		e.preventDefault();
 		dragOverSlot = null;
+		draggingMeld = null;
 		const cardId = e.dataTransfer?.getData('text/card-id');
 		const meldMove = e.dataTransfer?.getData('text/meld-move');
 		const fromMeldRaw = e.dataTransfer?.getData('text/from-meld');
 		const fromMeld = fromMeldRaw ? parseInt(fromMeldRaw, 10) : -1;
 
 		if (meldMove) {
-			if (fromMeld === slotIndex) return;
-			onmelddrop?.(e, fromMeld, slotIndex);
+			if (fromMeld !== slotIndex) onmelddrop?.(e, fromMeld, slotIndex);
 		} else if (cardId && fromMeld >= 0) {
-			if (fromMeld === slotIndex) return;
-			oncardmovetomeld?.(cardId, slotIndex);
+			if (fromMeld !== slotIndex) oncardmovetomeld?.(cardId, slotIndex);
 		} else if (cardId) {
 			oncarddrop?.(e, slotIndex);
 		}
@@ -58,100 +62,131 @@
 		e.dataTransfer?.setData('text/meld-move', 'true');
 		e.dataTransfer?.setData('text/from-meld', String(meldIndex));
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+		draggingMeld = meldIndex;
 		ondragstart?.(e, meldIndex);
 	}
 
 	function handleCardDragStart(e: DragEvent, meldIndex: number, cardId: string) {
+		e.stopPropagation();
 		e.dataTransfer?.setData('text/card-id', cardId);
 		e.dataTransfer?.setData('text/from-meld', String(meldIndex));
 		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
 	}
-
-	function handleSlotClick(slotIndex: number) {
-		const meld = melds[slotIndex];
-		if (!meld) return;
-		for (const card of meld.cards) {
-			oncardback?.(card.id);
-		}
-	}
-
-	function handleKeyDown(e: KeyboardEvent, slotIndex: number) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			handleSlotClick(slotIndex);
-		}
-	}
 </script>
 
-<div class="mx-auto w-full max-w-3xl px-2">
-	<div class="flex flex-col gap-2">
+<!--
+  Rummikub-style rack board.
+  Two rows of meld slots on a wood-textured surface.
+-->
+<div
+	class="w-full rounded-2xl p-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.4),0_4px_16px_rgba(0,0,0,0.5)]"
+	style="background: linear-gradient(160deg, #6b3f1f 0%, #8b5a2b 40%, #7a4e22 70%, #5c3317 100%);"
+>
+	<!-- Top rail shadow line -->
+	<div class="mb-2 h-px w-full rounded-full opacity-40" style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"></div>
+
+	<div class="flex flex-col gap-3">
 		{#each { length: rows } as _, rowIdx (rowIdx)}
-			<div class="flex justify-center gap-1.5">
-				{#each { length: cols } as _, colIdx (colIdx)}
-					{@const slotIndex = rowIdx * cols + colIdx}
-					{@const meld = melds[slotIndex]}
+			<!-- Rack rail row -->
+			<div
+				class="flex gap-2 rounded-xl p-2 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
+				style="background: linear-gradient(180deg, #3d2008 0%, #4a2a0e 50%, #3d2008 100%);"
+			>
+				{#each { length: COLS } as _, colIdx (colIdx)}
+					{@const slotIndex = rowIdx * COLS + colIdx}
+					{@const meld = melds[slotIndex] ?? null}
 					{@const isOver = dragOverSlot === slotIndex}
+					{@const isDraggingThis = draggingMeld === slotIndex}
+					{@const valid = meld ? isValidMeld(meld.cards) : false}
+
 					<div
-						class="relative flex min-h-16 items-center gap-0.5 rounded-lg border-2 p-1 transition-all
-							{meld ? 'border-green-400/40 bg-green-950/40' : 'border-dashed border-white/10 bg-white/5'}
-							{isOver ? 'border-primary/60 bg-primary/10' : ''}
-							cursor-pointer hover:border-green-400/60"
+						class="relative flex min-h-30 flex-1 items-center gap-1 rounded-lg border-2 px-2 py-2 transition-all duration-150
+							{meld
+								? valid
+									? 'border-green-400/50 bg-white/[0.07]'
+									: 'border-red-400/50 bg-white/[0.07]'
+								: 'border-dashed border-amber-200/20 bg-black/20'}
+							{isOver ? 'scale-[1.02] border-amber-300/70 bg-amber-300/10 shadow-lg' : ''}
+							{isDraggingThis ? 'opacity-40' : ''}
+							cursor-pointer"
 						ondragover={(e) => handleDragOver(e, slotIndex)}
 						ondragleave={(e) => handleDragLeave(e, slotIndex)}
 						ondrop={(e) => handleDrop(e, slotIndex)}
-						onclick={() => handleSlotClick(slotIndex)}
-						onkeydown={(e) => handleKeyDown(e, slotIndex)}
+						onclick={() => { if (meld) for (const c of meld.cards) oncardback?.(c.id); }}
+						onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && meld) { e.preventDefault(); for (const c of meld.cards) oncardback?.(c.id); }}}
 						role="button"
-						aria-label="Meld slot {slotIndex + 1}"
+						aria-label="Meld slot {slotIndex + 1}{meld ? ` — ${meld.cards.length} cards, ${valid ? 'valid' : 'invalid'}` : ' — empty'}"
 						tabindex="0"
 					>
 						{#if meld}
+							<!-- Meld group: drag handle + cards -->
 							<div
 								class="flex items-center gap-0.5"
 								draggable="true"
 								role="group"
-								aria-roledescription="meld"
+								aria-roledescription="meld group"
 								tabindex="-1"
-								aria-label="Meld {slotIndex + 1}"
+								aria-label="Meld group {slotIndex + 1}"
 								ondragstart={(e) => handleMeldDragStart(e, slotIndex)}
 							>
+								<!-- Drag grip -->
+								<div class="mr-1 flex flex-col gap-0.5 opacity-30 hover:opacity-70 cursor-grab active:cursor-grabbing" aria-hidden="true">
+									{#each { length: 4 } as _}
+										<div class="h-px w-3 rounded-full bg-amber-200"></div>
+									{/each}
+								</div>
+
+								<!-- Cards -->
 								{#each meld.cards as card (card.id)}
 									<div
-										class="relative"
+										class="group relative"
 										draggable="true"
 										role="button"
 										tabindex="-1"
-										aria-label="Card from meld {slotIndex + 1}"
-										ondragstart={(e) => {
-											e.stopPropagation();
-											handleCardDragStart(e, slotIndex, card.id);
-										}}
+										aria-label="Card {cardLabel(card)} in meld {slotIndex + 1}"
+										ondragstart={(e) => handleCardDragStart(e, slotIndex, card.id)}
 									>
-										<CardComp {card} faceDown={false} clickable={false} />
+										<!-- Compact tile -->
+										<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md border border-gray-200 bg-white shadow-sm sm:h-20 sm:w-14">
+											{#if card.isJoker}
+												<span class="text-xl">🃏</span>
+											{:else}
+												<span class="text-xs font-bold leading-none sm:text-sm {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.value === 1 ? 'A' : card.value === 11 ? 'J' : card.value === 12 ? 'Q' : card.value === 13 ? 'K' : card.value}</span>
+												<span class="text-sm sm:text-base {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
+											{/if}
+										</div>
+										<!-- Remove button -->
 										<button
-											class="absolute -top-1.5 right-0 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/80 text-[10px] text-white hover:bg-red-500"
-											onclick={(e) => {
-												e.stopPropagation();
-												oncardback?.(card.id);
-											}}>x</button
-										>
+											class="absolute -top-1.5 -right-1.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white shadow group-hover:flex hover:bg-red-600"
+											onclick={(e) => { e.stopPropagation(); oncardback?.(card.id); }}
+											aria-label="Remove {cardLabel(card)} from meld"
+										>×</button>
 									</div>
 								{/each}
 							</div>
-							<div
-								class="absolute top-0.5 right-1 text-[9px] font-medium tracking-wider uppercase
-									{isValidMeld(meld.cards) ? 'text-green-400' : 'text-red-400'}"
-							>
-								{meld.type === 'set' ? 'S' : 'Q'}
+
+							<!-- Validity badge -->
+							<div class="absolute top-1 right-1.5 text-[9px] font-bold uppercase tracking-wider
+								{valid ? 'text-green-400' : 'text-red-400'}">
+								{valid ? '✓' : '✗'}&nbsp;{meld.type === 'set' ? 'Set' : 'Seq'}
 							</div>
 						{:else}
-							<span class="w-full text-center text-[10px] text-white/15 select-none"
-								>{slotIndex + 1}</span
-							>
+							<!-- Empty slot -->
+							<div class="flex w-full flex-col items-center justify-center gap-1 select-none">
+								<div class="text-[10px] font-medium text-amber-200/20">{slotIndex + 1}</div>
+								{#if isOver}
+									<div class="text-xs text-amber-300/60">Drop here</div>
+								{:else}
+									<div class="text-[18px] text-amber-200/10">⠿</div>
+								{/if}
+							</div>
 						{/if}
 					</div>
 				{/each}
 			</div>
 		{/each}
 	</div>
+
+	<!-- Bottom rail shadow line -->
+	<div class="mt-2 h-px w-full rounded-full opacity-40" style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"></div>
 </div>
