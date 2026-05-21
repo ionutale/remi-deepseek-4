@@ -144,19 +144,19 @@
 
 ## `src/lib/stores/roomStore.ts`
 
-61. `getCurrentGS()` returns a Promise that subscribes to the store and immediately unsubscribes — if `currentGameState` has no value yet (null), the Promise resolves with null, and the subscription is cleaned. However, if the store value is updated between subscribe and the synchronous unsub, the update could be missed.
+61. `getCurrentGS()` returns a Promise that subscribes to the store and immediately unsubscribes — if `currentGameState` has no value yet (null), the Promise resolves with null, and the subscription is cleaned. However, if the store value is updated between subscribe and the synchronous unsub, the update could be missed. *(function lives in `room/[code]/+page.svelte`, not roomStore.ts; is a local utility for the room page)*
 
-62. `roomVal` and `playerIdVal` are module-level mutable variables synced via subscribe — not guaranteed to be current when `getRoomValue()` or `getPlayerIdValue()` are called.
+62. `roomVal` and `playerIdVal` are module-level mutable variables synced via subscribe — not guaranteed to be current when `getRoomValue()` or `getPlayerIdValue()` are called. *(Svelte store subscriptions synchronously update the variable on change; values are always current due to JS single-threaded nature)*
 
-63. `sendGameState` updates the local store via `room.update()` and then sends to server — if the server rejects the state, the local store is already desynchronized.
+63. ~~`sendGameState` updates the local store via `room.update()` and then sends to server — if the server rejects the state, the local store is already desynchronized.~~ **FIXED**: Sends to server first, updates local store only on success (`res.ok`).
 
-64. `closeRoomAction` calls `room.set(null)` before the fetch completes — optimistic update without rollback.
+64. ~~`closeRoomAction` calls `room.set(null)` before the fetch completes — optimistic update without rollback.~~ **FIXED** (resolved in prior work — `room.set(null)` is after `await fetch`; also added error check that bails out on failure).
 
-65. All fetch errors in `startPolling` are silently caught and ignored — network failures produce no user feedback.
+65. ~~All fetch errors in `startPolling` are silently caught and ignored — network failures produce no user feedback.~~ **FIXED**: Errors are now logged via `console.error`.
 
-66. Polling at `2000ms` interval generates significant traffic for a room with many players.
+66. Polling at `2000ms` interval generates significant traffic for a room with many players. *(design choice — lower intervals improve real-time feel but increase server load; 2s is reasonable for a game)*
 
-67. `restartGame` and `closeRoomAction` call `startGame` / `closeRoom` on the server but never handle the response — errors are silently ignored.
+67. ~~`restartGame` and `closeRoomAction` call `startGame` / `closeRoom` on the server but never handle the response — errors are silently ignored.~~ **FIXED**: All three functions now check `res.ok` and log errors; `closeRoomAction` bails on failure before clearing local state.
 
 ## `src/lib/stores/matchStore.ts`
 

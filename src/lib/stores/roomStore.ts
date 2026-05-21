@@ -22,8 +22,8 @@ export function startPolling(code: string) {
 				const data = await res.json();
 				room.set(data);
 			}
-		} catch {
-			/* ignore */
+		} catch (e) {
+			console.error('Room polling failed:', e);
 		}
 	}, 2000);
 }
@@ -69,31 +69,37 @@ export async function createRoom(name: string, maxPlayers: number = 4) {
 export async function startGame() {
 	const $room = getRoomValue();
 	if (!$room) return;
-	await fetch(`/api/rooms/${$room.code}`, {
+	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ action: 'start', playerId: getPlayerIdValue() })
 	});
+	if (!res.ok) console.error('Failed to start game:', await res.text());
 }
 
 export async function restartGame() {
 	const $room = getRoomValue();
 	if (!$room) return;
-	await fetch(`/api/rooms/${$room.code}`, {
+	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ action: 'restart', playerId: getPlayerIdValue() })
 	});
+	if (!res.ok) console.error('Failed to restart game:', await res.text());
 }
 
 export async function closeRoomAction() {
 	const $room = getRoomValue();
 	if (!$room) return;
-	await fetch(`/api/rooms/${$room.code}`, {
+	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ action: 'close', playerId: getPlayerIdValue() })
 	});
+	if (!res.ok) {
+		console.error('Failed to close room:', await res.text());
+		return;
+	}
 	stopPolling();
 	room.set(null);
 }
@@ -101,12 +107,14 @@ export async function closeRoomAction() {
 export async function sendGameState(state: GameState) {
 	const $room = getRoomValue();
 	if (!$room) return;
-	room.update((r) => (r ? { ...r, gameState: state } : r));
-	await fetch(`/api/rooms/${$room.code}`, {
+	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ playerId: getPlayerIdValue(), gameState: state })
 	});
+	if (res.ok) {
+		room.update((r) => (r ? { ...r, gameState: state } : r));
+	}
 }
 
 let roomVal: Room | null = null;
