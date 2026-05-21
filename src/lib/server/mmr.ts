@@ -19,6 +19,7 @@ export interface MatchInfo {
 	player2Id: string;
 	player1Name: string;
 	player2Name: string;
+	createdAt: number;
 }
 
 const mmrMap = new Map<string, number>();
@@ -50,13 +51,16 @@ export function tryMatch(
 	if (existing) return { queued: true };
 
 	let best: QueueEntry | null = null;
-	let bestDiff = Infinity;
+	let bestScore = -Infinity;
 
 	for (const entry of queue) {
 		const diff = Math.abs(entry.mmr - mmr);
 		const maxDiff = mmrDiff(entry, now);
-		if (diff <= maxDiff && diff < bestDiff) {
-			bestDiff = diff;
+		if (diff > maxDiff) continue;
+		const waitBonus = Math.min(now - entry.joinedAt, 60_000) / 1000;
+		const score = waitBonus - diff;
+		if (score > bestScore) {
+			bestScore = score;
 			best = entry;
 		}
 	}
@@ -70,7 +74,8 @@ export function tryMatch(
 			player1Id: playerId,
 			player2Id: best.playerId,
 			player1Name: playerName,
-			player2Name: best.playerName
+			player2Name: best.playerName,
+			createdAt: Date.now()
 		};
 		activeMatches.set(playerId, match);
 		activeMatches.set(best.playerId, match);
@@ -99,6 +104,7 @@ export function removeMatch(playerId: string): void {
 }
 
 export function recordResult(winnerId: string, loserId: string): void {
+	if (winnerId === loserId) return;
 	ensureMMR(winnerId);
 	ensureMMR(loserId);
 	const winnerMMR = getMMR(winnerId);
@@ -112,6 +118,32 @@ export function recordResult(winnerId: string, loserId: string): void {
 export function isQueued(playerId: string): boolean {
 	return queue.some((e) => e.playerId === playerId);
 }
+
+const MATCH_TIMEOUT_MS = 3_600_000;
+
+export function cleanAbandonedMatches(): void {
+	const cutoff = Date.now() - MATCH_TIMEOUT_MS;
+	for (const [playerId, match] of activeMatches) {
+		if (match.createdAt < cutoff) {
+			activeMatches.delete(playerId);
+			activeMatches.delete(match.player1Id === playerId ? match.player2Id : match.player1Id);
+		}
+	}
+}
+
+const CLEANUP_INTERVAL_MS = 60_000;
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+export function startCleanupTimer(): void {
+	if (cleanupTimer) return;
+	cleanupTimer = setInterval(cleanAbandonedMatches, CLEANUP_INTERVAL_MS);
+}
+export function stopCleanupTimer(): void {
+	if (cleanupTimer) {
+		clearInterval(cleanupTimer);
+		cleanupTimer = null;
+	}
+}
+startCleanupTimer();
 
 export function getQueueSize(): number {
 	return queue.length;

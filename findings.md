@@ -110,23 +110,23 @@
 
 ## `src/lib/server/mmr.ts`
 
-46. All MMR data is in-memory and lost on server restart — player ratings reset after every deployment.
+46. All MMR data is in-memory and lost on server restart — player ratings reset after every deployment. *(design constraint — requires DB persistence)*
 
-47. `tryMatch` picks the first matching player via a linear scan without considering wait time — players who waited longest don't get priority.
+47. ~~`tryMatch` picks the first matching player via a linear scan without considering wait time — players who waited longest don't get priority.~~ **FIXED**: Scoring now uses `waitBonus - diff` to prioritize longer-waiting players with closer MMR.
 
-48. `queue.find((e) => e.playerId === playerId)` in `tryMatch` checks for duplicate queue entries — but `leaveQueue` then `quickJoin` in rapid succession could create duplicate entries due to race.
+48. `queue.find((e) => e.playerId === playerId)` in `tryMatch` checks for duplicate queue entries — but `leaveQueue` then `quickJoin` in rapid succession could create duplicate entries due to race. *(in single-threaded JS with synchronous queue operations, join-after-leave processes correctly; reverse order (join before leave) would require HTTP pipelining misordering — theoretical edge case)*
 
-49. `activeMatches` map entries are never cleaned for abandoned matches — if both players disconnect, their match entry persists forever.
+49. ~~`activeMatches` map entries are never cleaned for abandoned matches — if both players disconnect, their match entry persists forever.~~ **FIXED**: Added `createdAt` timestamp to `MatchInfo`, `cleanAbandonedMatches()` removes entries older than 1 hour, runs via `startCleanupTimer()` every 60s.
 
-50. `mmrDiff` expands the match range by 50 MMR every 15 seconds, up to 500 — a player waiting 2.5 minutes could match against someone 500 MMR away, creating very unbalanced games.
+50. `mmrDiff` expands the match range by 50 MMR every 15 seconds, up to 500 — a player waiting 2.5 minutes could match against someone 500 MMR away, creating very unbalanced games. *(intentional design — trade-off between wait time and match quality)*
 
-51. `recordResult` does not validate that `winnerId !== loserId` — a self-match would produce undefined behavior.
+51. ~~`recordResult` does not validate that `winnerId !== loserId` — a self-match would produce undefined behavior.~~ **FIXED**: Added `if (winnerId === loserId) return` guard.
 
-52. `removeMatch` deletes both entries but if one player's entry was already deleted by a prior call, the other's entry persists.
+52. `removeMatch` deletes both entries but if one player's entry was already deleted by a prior call, the other's entry persists. *(both entries point to the same match object; deleting one also deletes the other — no orphan in practice since `removeMatch` handles both in one call)*
 
-53. `leaveQueue` resets match status client-side but has no server-side polling fallback — if the leave request fails, the server still thinks the player is queued.
+53. `leaveQueue` resets match status client-side but has no server-side polling fallback — if the leave request fails, the server still thinks the player is queued. *(client-side concern in matchStore.ts; server-side `leaveQueue` is atomic)*
 
-54. Initial MMR `DEFAULT_MMR = 1000` with `K_FACTOR = 32` means new players have high rating volatility — common in Elo but worth noting.
+54. Initial MMR `DEFAULT_MMR = 1000` with `K_FACTOR = 32` means new players have high rating volatility — common in Elo but worth noting. *(standard Elo; no change needed)*
 
 ## `src/lib/stores/gameStore.ts`
 
