@@ -62,6 +62,8 @@ export async function PATCH({ params, request }) {
 	}
 }
 
+const TURN_TIMEOUT_MS = 120_000;
+
 export async function PUT({ params, request }) {
 	const { playerId, sessionToken, gameState } = await request.json();
 	if (!playerId || !sessionToken || !(await verifySession(playerId, sessionToken))) {
@@ -71,6 +73,9 @@ export async function PUT({ params, request }) {
 	if (!room) return json({ error: 'Room not found' }, { status: 404 });
 	if (!room.players.some((p) => p.id === playerId)) {
 		return json({ error: 'Not a player in this room' }, { status: 403 });
+	}
+	if (room.gameState && Date.now() - room.gameState.turnStartedAt > TURN_TIMEOUT_MS) {
+		return json({ error: 'Turn timed out' }, { status: 400 });
 	}
 	const result = await updateGameState(params.code, gameState);
 	if (result.error) return json(result, { status: 400 });

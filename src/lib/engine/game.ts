@@ -20,7 +20,8 @@ export function initGame(config: GameConfig): GameState {
 		drawPile,
 		discardPile,
 		phase: 'draw',
-		winner: null
+		winner: null,
+		turnStartedAt: Date.now()
 	};
 }
 
@@ -133,6 +134,7 @@ export function nextTurn(state: GameState): GameState {
 	return {
 		...state,
 		currentPlayerIndex: nextIndex,
-		phase: 'draw'
+		phase: 'draw',
+		turnStartedAt: Date.now()
 	};
 }

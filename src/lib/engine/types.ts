@@ -33,6 +33,7 @@ export interface GameState {
 	discardPile: Card[];
 	phase: GamePhase;
 	winner: number | null;
+	turnStartedAt: number;
 }
 
 export interface GameConfig {
