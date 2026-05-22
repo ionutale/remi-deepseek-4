@@ -51,7 +51,7 @@
 			const res = await fetch('/api/rooms');
 			if (res.ok) {
 				const all: Room[] = await res.json();
-				rooms = all.filter((r) => r.status === 'waiting');
+				rooms = all;
 			}
 		} catch {
 			/* ignore */
@@ -247,7 +247,7 @@
 						</button>
 					</div>
 					{#if rooms.length === 0}
-						<p class="py-6 text-sm text-base-content/50">No open rooms</p>
+						<p class="py-6 text-sm text-base-content/50">No rooms available</p>
 					{:else}
 						<ul class="list rounded-box bg-base-200">
 							{#each rooms as r (r.code)}
@@ -258,6 +258,15 @@
 											<span class="text-xs text-base-content/50"
 												>{r.players.length}/{r.maxPlayers}</span
 											>
+											<span
+												class="badge badge-sm {r.status === 'waiting'
+													? 'badge-success'
+													: r.status === 'playing'
+														? 'badge-warning'
+														: 'badge-neutral'}"
+											>
+												{r.status}
+											</span>
 										</div>
 										<div class="flex flex-wrap gap-1">
 											{#each r.players as p (p.id)}
@@ -265,8 +274,11 @@
 											{/each}
 										</div>
 									</div>
-									<button class="btn btn-sm btn-primary" onclick={() => handleJoinRoom(r.code)}>
-										Join
+									<button
+										class="btn btn-sm {r.status === 'waiting' ? 'btn-primary' : 'btn-ghost'}"
+										onclick={() => handleJoinRoom(r.code)}
+									>
+										{r.status === 'waiting' ? 'Join' : 'View'}
 									</button>
 								</li>
 							{/each}
