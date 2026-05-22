@@ -36,6 +36,8 @@ export async function POST({ request }) {
 	if (!room.gameState || room.gameState.phase !== 'finished') {
 		return json({ error: 'Game not finished' }, { status: 400 });
 	}
+	// MMR is only rated for 1v1 matchmaking — custom rooms with 3-4 players
+	// are casual and don't affect ratings. See P1-4 in the plan.
 	if (room.players.length !== 2)
 		return json({ error: 'Only 1v1 matches are rated' }, { status: 400 });
 

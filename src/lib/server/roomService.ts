@@ -108,6 +108,8 @@ export async function updateGameState(code: string, state: GameState): Promise<{
 	if (state.phase === 'finished') {
 		update.status = 'finished';
 		await col().updateOne({ code: roomCode } as any, { $set: update } as any);
+		// MMR is only rated for 1v1 matchmaking — custom rooms with 3-4 players
+		// are casual and don't affect ratings. See P1-4 in the plan.
 		if (room.players.length === 2 && state.winner !== null) {
 			const winnerId = room.players[state.winner].id;
 			const loserId = room.players[1 - state.winner].id;
