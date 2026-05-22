@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { aiTurn, shouldDrawFromDiscard, findWorstCard } from '$lib/engine/ai';
+import { aiTurn, shouldDrawFromDiscard, findSafestDiscard } from '$lib/engine/ai';
 import type { Card } from '$lib/engine/types';
 import { initGame } from '$lib/engine/game';
 import { clearCombinationsCache } from '$lib/engine/utils';
@@ -36,15 +36,20 @@ describe('shouldDrawFromDiscard', () => {
 	});
 });
 
-describe('findWorstCard', () => {
-	it('returns card not part of any meld', () => {
+describe('findSafestDiscard', () => {
+	it('returns card not part of any meld and with high discard overlap', () => {
 		const hand: Card[] = [
 			{ suit: '♠', value: 5, id: 'h1', isJoker: false },
 			{ suit: '♥', value: 5, id: 'h2', isJoker: false },
 			{ suit: '♦', value: 5, id: 'h3', isJoker: false },
 			{ suit: '♠', value: 9, id: 'h4', isJoker: false }
 		];
-		const worst = findWorstCard(hand);
+		const discardPile: Card[] = [
+			{ suit: '♠', value: 8, id: 'd1', isJoker: false },
+			{ suit: '♠', value: 10, id: 'd2', isJoker: false }
+		];
+		const worst = findSafestDiscard(hand, discardPile);
+		// h4 (♠9) is safest: not meldable + many nearby spades in discard
 		expect(worst.id).toBe('h4');
 	});
 });

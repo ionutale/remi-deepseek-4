@@ -49,6 +49,35 @@ export function findWorstCard(hand: Card[]): Card {
 	return worstCard;
 }
 
+function countDiscardOverlaps(card: Card, discardPile: Card[]): number {
+	let count = 0;
+	for (const d of discardPile) {
+		if (d.id === card.id) continue;
+		if (d.suit === card.suit && Math.abs(d.value - card.value) <= 2) count++;
+		if (d.value === card.value && d.suit !== card.suit) count++;
+	}
+	return count;
+}
+
+export function findSafestDiscard(hand: Card[], discardPile: Card[]): Card {
+	let best = hand[0];
+	let bestScore = -Infinity;
+
+	for (const card of hand) {
+		const remaining = hand.filter((c) => c.id !== card.id);
+		const meldable = countMeldableCards(remaining);
+
+		const danger = countDiscardOverlaps(card, discardPile);
+		const score = meldable + danger * 5;
+		if (score > bestScore) {
+			bestScore = score;
+			best = card;
+		}
+	}
+
+	return best;
+}
+
 export function aiTurn(state: GameState): GameState {
 	let current = state;
 	const player = current.players[current.currentPlayerIndex];
@@ -74,7 +103,7 @@ export function aiTurn(state: GameState): GameState {
 			return closeGame(current);
 		}
 
-		const worst = findWorstCard(currentPlayer.hand);
+		const worst = findSafestDiscard(currentPlayer.hand, current.discardPile);
 		current = discardCard(current, worst.id);
 	}
 
