@@ -74,4 +74,73 @@ test.describe('Remi E2E', () => {
 		const quickMatch = page.getByText('Quick Match (1v1)');
 		await expect(quickMatch).toBeDisabled();
 	});
+
+	test('Full 2-player match with alternating turns', async ({ context }) => {
+		test.setTimeout(120_000);
+		const bobPage = await context.newPage();
+		const alicePage = await context.newPage();
+
+		// Alice creates 2-player room
+		await alicePage.goto('/');
+		await alicePage.fill('input[placeholder="Player"]', 'Alice');
+		await alicePage.locator('.join button:has-text("2")').click();
+		await alicePage.click('button:has-text("Create Room")');
+		await alicePage.waitForURL(/\/room\//);
+		const roomCode = alicePage.url().split('/').pop()!;
+
+		// Bob joins via home page
+		await bobPage.goto('/');
+		await bobPage.fill('input[placeholder="Player"]', 'Bob');
+		await bobPage.fill('input[placeholder="ABC123"]', roomCode);
+		await bobPage.click('button:has-text("Join Room")');
+		await bobPage.waitForURL(/\/room\//);
+
+		// Both see Bob in player list
+		await expect(alicePage.getByText('Bob')).toBeVisible();
+		await expect(bobPage.getByText('Alice')).toBeVisible();
+
+		// Alice starts game
+		await alicePage.click('button:has-text("Start Game")');
+		await expect(alicePage.getByText('Your turn')).toBeVisible({ timeout: 10000 });
+
+		const MAX_ROUNDS = 12;
+
+		async function playTurn(page: typeof alicePage) {
+			const closeBtn = page.getByText('Close Game');
+			if (await closeBtn.isVisible()) {
+				await closeBtn.click();
+				return 'closed';
+			}
+			if (await page.getByLabel(/Draw pile,/).isVisible()) {
+				await page.getByLabel(/Draw pile,/).click();
+			}
+			await page.locator('[aria-label*="Your hand"] button:not([disabled])').first().click();
+			await page.getByText(/Discard (✓|a card)/).click();
+			return 'played';
+		}
+
+		let rounds = 0;
+		while (rounds < MAX_ROUNDS) {
+			// Alice's turn
+			const aliceResult = await playTurn(alicePage);
+			if (aliceResult === 'closed') break;
+			// Wait for polling: Alice loses "Your turn", Bob gains it
+			await expect(alicePage.getByText('Your turn')).not.toBeVisible({ timeout: 5000 });
+			await expect(bobPage.getByText('Your turn')).toBeVisible({ timeout: 10000 });
+
+			// Bob's turn
+			const bobResult = await playTurn(bobPage);
+			if (bobResult === 'closed') break;
+			await expect(bobPage.getByText('Your turn')).not.toBeVisible({ timeout: 5000 });
+			await expect(alicePage.getByText('Your turn')).toBeVisible({ timeout: 10000 });
+
+			rounds++;
+		}
+
+		// Verify game state after match
+		const roomRes = await alicePage.request.get(`/api/rooms/${roomCode}`);
+		const { gameState: gs } = await roomRes.json();
+		expect(gs).toBeTruthy();
+		expect(rounds).toBeGreaterThanOrEqual(2);
+	});
 });
