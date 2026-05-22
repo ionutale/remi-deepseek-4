@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import type { GameState, GameConfig } from '$lib/engine/types';
 import { initGame } from '$lib/engine/game';
 import { roomsCol } from './db';
+import { verifySession } from './auth';
 import { recordResult, removeMatch } from './mmr';
 
 export interface Room {
@@ -121,10 +122,12 @@ export async function updateGameState(code: string, state: GameState): Promise<{
 	return {};
 }
 
-export async function closeRoom(code: string, playerId: string): Promise<{ error?: string }> {
+export async function closeRoom(code: string, playerId: string, sessionToken: string): Promise<{ error?: string }> {
 	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode } as any);
+	const room = await getRoom(code);
 	if (!room) return { error: 'Room not found' };
+	const authed = await verifySession(playerId, sessionToken);
+	if (!authed) return { error: 'Unauthorized' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can close' };
 	await col().deleteOne({ code: roomCode } as any);
 	return {};

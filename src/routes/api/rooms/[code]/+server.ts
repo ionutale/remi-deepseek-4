@@ -49,12 +49,12 @@ export async function PATCH({ params, request }) {
 			return json({ ok: true });
 		}
 		case 'close': {
-			if (!playerId || !sessionToken || !(await verifySession(playerId, sessionToken))) {
+			if (!playerId || !sessionToken) {
 				return json({ error: 'Unauthorized' }, { status: 403 });
 			}
-			await destroySession(playerId);
-			const result = await closeRoom(code, playerId);
+			const result = await closeRoom(code, playerId, sessionToken);
 			if (result.error) return json(result, { status: 400 });
+			await destroySession(playerId);
 			return json({ ok: true });
 		}
 		default:
