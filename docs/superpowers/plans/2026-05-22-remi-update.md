@@ -98,8 +98,10 @@ All items below are **already built and working**. Checkbox = verified in codeba
 
 ### P0-2: E2E Tests
 **Why:** No regression safety for UI or multiplayer flows.
+**Scope:** Happy path + error states (invalid room code, unauthorized actions, full draw pile, rate-limit trigger, leave while polling).
+**Setup:** Requires running `mongod` — documented in README, configured in CI.
 **What:**
-- Playwright E2E for: create room → join → start game → play → close
+- Playwright E2E for: create room → join → start game → play → close (happy + errors)
 - Playwright E2E for: matchmaking → match → play → record result
 - Playwright E2E for: single-player game → draw → discard → close
 - Playwright E2E for: rate limiting, CSRF rejection, auth rejection
@@ -113,33 +115,28 @@ All items below are **already built and working**. Checkbox = verified in codeba
 - Show MMR change after game finishes
 - Component: `MMRBadge.svelte` or integrate into existing UI
 
-### P1-2: Component Tests
-**Why:** Vitest browser project configured but disabled. No component-level testing.
-**What:**
-- Enable vitest browser project for `src/lib/components/*.svelte`
-- Component tests for Card, DrawPile, DiscardPile, GameOver, GameStart
-- Skip heavy integration test for GameTable (covered by E2E)
-
 ### P1-3: `closeRoom` Auth Hardening
 **Why:** `closeRoom` only checks `room.ownerId !== playerId` — no validation that caller is in the room (finding #42).
+**Approach:** Server-side only — thread `sessionToken` through to `closeRoom` and verify before owner check.
 **What:**
-- Add `verifySession` check in closeRoom
-- Verify before it is called in the PATCH handler
+- Add `sessionToken` parameter to `closeRoom()`
+- Verify session before owner check in PATCH handler
 
 ### P1-4: Multiplayer MMR for 3+ Player Games
-**Why:** `updateGameState` only records MMR for 2-player games (finding #41). For 3+ player games, MMR is silently skipped.
+**Decision:** Documented intentional — MMR is only for 1v1 matchmaking. Custom rooms with 3-4 players are casual and don't affect rating.
 **What:**
-- Implement multi-player MMR calculation (e.g., each opponent is a separate Elo comparison)
-- Or: document as intentional limitation if MMR is only for 1v1 matchmaking
+- Add clear comment + logging when MMR is skipped for 3+ player games
 
 ## P2 — Nice to Have
 
 ### P2-1: AI Strategy Improvements
 **Why:** Current AI is basic (finding #96-99). Only draws/discards/closes. Doesn't track opponent discards.
+**Scope:** Full threat-model — opponent discard tracking + strategic avoidance + meld-completion awareness.
 **What:**
 - Track which cards opponents have discarded
 - Avoid discarding cards that opponents are collecting
 - Prefer drawing from discard when it denies opponents a meld card
+- Evaluate each possible discard: could any opponent use it to complete a known meld?
 
 ### P2-2: Room List UI Polish
 **Why:** Current lobby tab shows raw room data.
@@ -150,10 +147,12 @@ All items below are **already built and working**. Checkbox = verified in codeba
 
 ### P2-3: Game Timer
 **Why:** No time limit per turn. Players can stall indefinitely.
+**Approach:** Server-side enforced — server tracks turn start time and auto-plays if no action received within limit.
 **What:**
 - Configurable turn timer (default 60s)
-- Auto-discard on timeout
-- UI countdown display
+- Server tracks turn start time, validates timestamps
+- Server auto-plays (draw + discard) on timeout
+- UI countdown display (cosmetic, shown to remaining players)
 
 ---
 
@@ -196,10 +195,6 @@ All items below are **already built and working**. Checkbox = verified in codeba
   - [ ] Multiplayer: create room → join → play → close
   - [ ] Matchmaking: queue → match → result → MMR
   - [ ] Security: rate limit, CSRF, auth rejection
-- [ ] **Task 17: Component Tests**
-  - [ ] Enable vitest browser project
-  - [ ] Tests for Card, DrawPile, DiscardPile, GameOver, GameStart
-
 ## Phase 5: Polish
 
 - [ ] **Task 18: MMR Display in UI**
