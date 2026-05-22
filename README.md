@@ -1,42 +1,63 @@
-# sv
+# Remi — Multiplayer Card Game
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A multiplayer Romanian rummy (remi) card game built with SvelteKit. Play against AI opponents or challenge friends online.
 
-## Creating a project
+## Screenshots
 
-If you're seeing this, you've probably already done this step. Congrats!
+| Home | Room Lobby |
+|------|------------|
+| ![Home](static/screenshots/home.png) | ![Lobby](static/screenshots/lobby.png) |
+
+| Game Board | Game Over |
+|-----------|-----------|
+| ![Game Board](static/screenshots/game-board.png) | ![Game Over](static/screenshots/game-over.png) |
+
+## Features
+
+- **Online multiplayer** — Create or join rooms, play with 2–4 players
+- **Quick Match (1v1)** — Auto-match against another player with MMR ratings
+- **AI opponents** — Play solo against AI in local games
+- **Real-time polling** — Room state syncs via periodic polling
+- **Meld staging** — Drag cards to organise melds before going out
+- **Joker support** — Colored and black jokers for wild-card melds
+- **MMR system** — Competitive ratings for 1v1 matches
+
+## Tech
+
+- **Framework:** [SvelteKit](https://kit.svelte.dev/) (Svelte 5 with runes)
+- **Database:** MongoDB via `mongodb-memory-server` (ephemeral, no external DB needed)
+- **Styling:** Tailwind CSS + daisyUI
+- **E2E tests:** Playwright
+- **Unit tests:** Vitest
+
+## Development
 
 ```sh
-# create a new project
-npx sv create my-app
+pnpm install
+pnpm run dev
 ```
 
-To recreate this project with the same configuration:
+Open [localhost:5173](http://localhost:5173).
+
+## Testing
 
 ```sh
-# recreate this project
-pnpm dlx sv@0.15.3 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" playwright tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:static" --install pnpm .
+# Unit tests
+pnpm run test:unit
+
+# E2E tests (builds app, starts MongoDB)
+pnpm run test:e2e
+
+# Playwright UI mode
+pnpx playwright test --ui
 ```
 
-## Developing
+## How to Play
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Remi is a rummy variant. Each player is dealt 14 cards. On your turn:
 
-```sh
-npm run dev
+1. **Draw** — Take a card from the draw pile or the discard pile
+2. **Discard** — Discard one card from your hand
+3. **Close** — If your hand can form valid melds covering all but one card, you can go out
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Melds are sets (same value, different suits) or sequences (consecutive values, same suit). Jokers can substitute any card.

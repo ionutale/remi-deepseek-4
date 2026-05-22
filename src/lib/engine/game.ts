@@ -69,6 +69,9 @@ export function drawFromDiscard(state: GameState): GameState {
 	if (state.phase !== 'draw') {
 		throw new Error('Can only draw during draw phase');
 	}
+	if (state.discardPile.length === 0) {
+		throw new Error('Discard pile is empty');
+	}
 
 	const drawnCard = state.discardPile[state.discardPile.length - 1];
 
