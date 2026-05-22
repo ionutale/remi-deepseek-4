@@ -16,14 +16,22 @@ export async function POST({ request }) {
 		const mmr = await getMMR(id);
 		const result = await tryMatch(id, sanitizeName(playerName));
 		if ('queued' in result) {
-			return json({ status: 'queued', playerId: id, sessionToken: token, mmr, queueSize: await getQueueSize() });
+			return json({
+				status: 'queued',
+				playerId: id,
+				sessionToken: token,
+				mmr,
+				queueSize: await getQueueSize()
+			});
 		}
 		const match = result.matched;
 
 		await createRoom(match.player1Name, 2, match.roomCode, match.player1Id);
 		await roomsCol().updateOne(
 			{ code: match.roomCode } as any,
-			{ $push: { players: { id: match.player2Id, name: match.player2Name, lastSeen: Date.now() } } } as any
+			{
+				$push: { players: { id: match.player2Id, name: match.player2Name, lastSeen: Date.now() } }
+			} as any
 		);
 
 		await startGame(match.roomCode, match.player1Id);

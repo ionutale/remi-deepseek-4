@@ -46,9 +46,9 @@
 
 19. ~~No `<title>` tag in the HTML shell — relies entirely on SvelteKit to set it, leaving a flash of untitled page.~~ **FIXED**: Added `<title>Rummy</title>` fallback in `app.html`.
 
-20. No `lang` attribute variability — hardcoded `lang="en"` even if the game is played internationally. *(design note — no i18n system exists yet; `lang="en"` is correct until i18n is added)*
+20. No `lang` attribute variability — hardcoded `lang="en"` even if the game is played internationally. _(design note — no i18n system exists yet; `lang="en"` is correct until i18n is added)_
 
-21. `display: contents` on the wrapper div has limited browser support in older browsers. *(design note — ~96% support as of 2026; required for SvelteKit hydration correctness; not actionable without breaking SvelteKit)*
+21. `display: contents` on the wrapper div has limited browser support in older browsers. _(design note — ~96% support as of 2026; required for SvelteKit hydration correctness; not actionable without breaking SvelteKit)_
 
 ## `src/routes/api/rooms/+server.ts`
 
@@ -86,11 +86,11 @@
 
 35. ~~`recordResult` is called with `winnerId` and `loserId` but the function also calls `ensureMMR` — it's called twice (once here, once depends on path).~~ **FIXED**: Removed redundant `ensureMMR` calls from matchmaking POST handler; `recordResult` handles it internally.
 
-36. MMR results are computed but `matchStore.recordResult` in the client calls this endpoint and gets MMR values, but the UI never displays them. *(feature gap — API returns MMR values but no UI component renders them; requires frontend work)*
+36. MMR results are computed but `matchStore.recordResult` in the client calls this endpoint and gets MMR values, but the UI never displays them. _(feature gap — API returns MMR values but no UI component renders them; requires frontend work)_
 
 ## `src/lib/server/roomService.ts`
 
-37. In-memory `Map<string, Room>` loses all rooms on server restart — no persistence for ongoing games. *(design constraint — requires DB-backed storage to fix; MongoDB connection is configured but unused in app code)*
+37. In-memory `Map<string, Room>` loses all rooms on server restart — no persistence for ongoing games. _(design constraint — requires DB-backed storage to fix; MongoDB connection is configured but unused in app code)_
 
 38. ~~`STALE_TIMEOUT_MS = 10_000` evicts players after only 10 seconds of inactivity — far too aggressive for real gameplay where a player might tab away for a moment.~~ **FIXED** (resolved in prior work — bumped to `30_000`).
 
@@ -98,55 +98,55 @@
 
 40. ~~`cleanStalePlayers()` transfers ownership when the owner is stale: `room.ownerId = room.players[0].id` — silently changes ownership without notifying the new owner.~~ **FIXED**: Added `console.warn` log when ownership is transferred, identifying the new owner.
 
-41. `updateGameState` hardcodes `1 - state.winner` for two-player MMR — crashes or produces wrong results for 3+ player games where the winner could be index 0 and loser is undetermined. *(guarded by `room.players.length === 2` check; MMR simply isn't recorded for 3+ player games — no crash, but a design limitation)*
+41. `updateGameState` hardcodes `1 - state.winner` for two-player MMR — crashes or produces wrong results for 3+ player games where the winner could be index 0 and loser is undetermined. _(guarded by `room.players.length === 2` check; MMR simply isn't recorded for 3+ player games — no crash, but a design limitation)_
 
-42. `closeRoom` does not validate the caller's `playerId` properly — only checks `room.ownerId !== playerId`, but other players could still disrupt the game. *(owner-only check is correct for close; other disruption vectors are separate issues)*
+42. `closeRoom` does not validate the caller's `playerId` properly — only checks `room.ownerId !== playerId`, but other players could still disrupt the game. _(owner-only check is correct for close; other disruption vectors are separate issues)_
 
-43. `restartGame` copies players with a shallow spread `{ ...p }` but the PlayerInRoom type has no nested objects, so it's safe — but inconsistent with `createRoom` which doesn't copy. *(cosmetic — both approaches work correctly since PlayerInRoom is flat)*
+43. `restartGame` copies players with a shallow spread `{ ...p }` but the PlayerInRoom type has no nested objects, so it's safe — but inconsistent with `createRoom` which doesn't copy. _(cosmetic — both approaches work correctly since PlayerInRoom is flat)_
 
 44. ~~`Room.createdAt` is a `Date` object but players use `lastSeen: number` (timestamp) — inconsistent date representations.~~ **FIXED**: `createdAt` changed to `number` (timestamp via `Date.now()`) for consistency with `lastSeen`.
 
-45. `startGame` allows the owner to start with only 2 players, but players could still be joining during the API call — race condition where a join arrives after start succeeds but before the response. *(in single-threaded JS with synchronous Map ops, no actual race exists between join and start within the same process)*
+45. `startGame` allows the owner to start with only 2 players, but players could still be joining during the API call — race condition where a join arrives after start succeeds but before the response. _(in single-threaded JS with synchronous Map ops, no actual race exists between join and start within the same process)_
 
 ## `src/lib/server/mmr.ts`
 
-46. All MMR data is in-memory and lost on server restart — player ratings reset after every deployment. *(design constraint — requires DB persistence)*
+46. All MMR data is in-memory and lost on server restart — player ratings reset after every deployment. _(design constraint — requires DB persistence)_
 
 47. ~~`tryMatch` picks the first matching player via a linear scan without considering wait time — players who waited longest don't get priority.~~ **FIXED**: Scoring now uses `waitBonus - diff` to prioritize longer-waiting players with closer MMR.
 
-48. `queue.find((e) => e.playerId === playerId)` in `tryMatch` checks for duplicate queue entries — but `leaveQueue` then `quickJoin` in rapid succession could create duplicate entries due to race. *(in single-threaded JS with synchronous queue operations, join-after-leave processes correctly; reverse order (join before leave) would require HTTP pipelining misordering — theoretical edge case)*
+48. `queue.find((e) => e.playerId === playerId)` in `tryMatch` checks for duplicate queue entries — but `leaveQueue` then `quickJoin` in rapid succession could create duplicate entries due to race. _(in single-threaded JS with synchronous queue operations, join-after-leave processes correctly; reverse order (join before leave) would require HTTP pipelining misordering — theoretical edge case)_
 
 49. ~~`activeMatches` map entries are never cleaned for abandoned matches — if both players disconnect, their match entry persists forever.~~ **FIXED**: Added `createdAt` timestamp to `MatchInfo`, `cleanAbandonedMatches()` removes entries older than 1 hour, runs via `startCleanupTimer()` every 60s.
 
-50. `mmrDiff` expands the match range by 50 MMR every 15 seconds, up to 500 — a player waiting 2.5 minutes could match against someone 500 MMR away, creating very unbalanced games. *(intentional design — trade-off between wait time and match quality)*
+50. `mmrDiff` expands the match range by 50 MMR every 15 seconds, up to 500 — a player waiting 2.5 minutes could match against someone 500 MMR away, creating very unbalanced games. _(intentional design — trade-off between wait time and match quality)_
 
 51. ~~`recordResult` does not validate that `winnerId !== loserId` — a self-match would produce undefined behavior.~~ **FIXED**: Added `if (winnerId === loserId) return` guard.
 
-52. `removeMatch` deletes both entries but if one player's entry was already deleted by a prior call, the other's entry persists. *(both entries point to the same match object; deleting one also deletes the other — no orphan in practice since `removeMatch` handles both in one call)*
+52. `removeMatch` deletes both entries but if one player's entry was already deleted by a prior call, the other's entry persists. _(both entries point to the same match object; deleting one also deletes the other — no orphan in practice since `removeMatch` handles both in one call)_
 
-53. `leaveQueue` resets match status client-side but has no server-side polling fallback — if the leave request fails, the server still thinks the player is queued. *(client-side concern in matchStore.ts; server-side `leaveQueue` is atomic)*
+53. `leaveQueue` resets match status client-side but has no server-side polling fallback — if the leave request fails, the server still thinks the player is queued. _(client-side concern in matchStore.ts; server-side `leaveQueue` is atomic)_
 
-54. Initial MMR `DEFAULT_MMR = 1000` with `K_FACTOR = 32` means new players have high rating volatility — common in Elo but worth noting. *(standard Elo; no change needed)*
+54. Initial MMR `DEFAULT_MMR = 1000` with `K_FACTOR = 32` means new players have high rating volatility — common in Elo but worth noting. _(standard Elo; no change needed)_
 
 ## `src/lib/stores/gameStore.ts`
 
-55. `runAITurns` uses `let current = { ...state }` shallow copy — mutates nested objects (players, hands) in place when `aiTurn` modifies them. *(all engine functions return new state objects, so shallow copy is sufficient — not a bug)*
+55. `runAITurns` uses `let current = { ...state }` shallow copy — mutates nested objects (players, hands) in place when `aiTurn` modifies them. _(all engine functions return new state objects, so shallow copy is sufficient — not a bug)_
 
-56. Safety counter of 20 iterations is arbitrary — with 3+ AI players, it's possible but unlikely to hit. If hit, the game state is left in a partial update. *(at most 3 AI turns run sequentially per action; 20 is a generous safety bound — harmless)*
+56. Safety counter of 20 iterations is arbitrary — with 3+ AI players, it's possible but unlikely to hit. If hit, the game state is left in a partial update. _(at most 3 AI turns run sequentially per action; 20 is a generous safety bound — harmless)_
 
-57. `playerClose` does not run AI turns after human closes — correct since game ends, but inconsistent with other action handlers that run AI turns. *(intentional — game ends on close; AI turns are irrelevant)*
+57. `playerClose` does not run AI turns after human closes — correct since game ends, but inconsistent with other action handlers that run AI turns. _(intentional — game ends on close; AI turns are irrelevant)_
 
-58. `playerDrawPile` and `playerDrawDiscard` run AI turns unconditionally — even if the human drew during the AI's turn (which shouldn't happen), AI would run. *(correct behavior — AI plays after human's draw; phase/FCI guards prevent drawing during AI turn)*
+58. `playerDrawPile` and `playerDrawDiscard` run AI turns unconditionally — even if the human drew during the AI's turn (which shouldn't happen), AI would run. _(correct behavior — AI plays after human's draw; phase/FCI guards prevent drawing during AI turn)_
 
-59. `startGame` overwrites any existing game state without confirmation — if a game is in progress, it's silently discarded. *(intentional — single-player game; "Start Game" explicitly resets)*
+59. `startGame` overwrites any existing game state without confirmation — if a game is in progress, it's silently discarded. _(intentional — single-player game; "Start Game" explicitly resets)_
 
 60. ~~Store errors thrown from `drawFromPile` / `discardCard` propagate uncaught to the Svelte runtime.~~ **FIXED**: All store action functions now wrap engine calls in try-catch, returning previous state on error.
 
 ## `src/lib/stores/roomStore.ts`
 
-61. `getCurrentGS()` returns a Promise that subscribes to the store and immediately unsubscribes — if `currentGameState` has no value yet (null), the Promise resolves with null, and the subscription is cleaned. However, if the store value is updated between subscribe and the synchronous unsub, the update could be missed. *(function lives in `room/[code]/+page.svelte`, not roomStore.ts; is a local utility for the room page)*
+61. `getCurrentGS()` returns a Promise that subscribes to the store and immediately unsubscribes — if `currentGameState` has no value yet (null), the Promise resolves with null, and the subscription is cleaned. However, if the store value is updated between subscribe and the synchronous unsub, the update could be missed. _(function lives in `room/[code]/+page.svelte`, not roomStore.ts; is a local utility for the room page)_
 
-62. `roomVal` and `playerIdVal` are module-level mutable variables synced via subscribe — not guaranteed to be current when `getRoomValue()` or `getPlayerIdValue()` are called. *(Svelte store subscriptions synchronously update the variable on change; values are always current due to JS single-threaded nature)*
+62. `roomVal` and `playerIdVal` are module-level mutable variables synced via subscribe — not guaranteed to be current when `getRoomValue()` or `getPlayerIdValue()` are called. _(Svelte store subscriptions synchronously update the variable on change; values are always current due to JS single-threaded nature)_
 
 63. ~~`sendGameState` updates the local store via `room.update()` and then sends to server — if the server rejects the state, the local store is already desynchronized.~~ **FIXED**: Sends to server first, updates local store only on success (`res.ok`).
 
@@ -154,19 +154,19 @@
 
 65. ~~All fetch errors in `startPolling` are silently caught and ignored — network failures produce no user feedback.~~ **FIXED**: Errors are now logged via `console.error`.
 
-66. Polling at `2000ms` interval generates significant traffic for a room with many players. *(design choice — lower intervals improve real-time feel but increase server load; 2s is reasonable for a game)*
+66. Polling at `2000ms` interval generates significant traffic for a room with many players. _(design choice — lower intervals improve real-time feel but increase server load; 2s is reasonable for a game)_
 
 67. ~~`restartGame` and `closeRoomAction` call `startGame` / `closeRoom` on the server but never handle the response — errors are silently ignored.~~ **FIXED**: All three functions now check `res.ok` and log errors; `closeRoomAction` bails on failure before clearing local state.
 
 ## `src/lib/stores/matchStore.ts`
 
-68. `currentPlayerId` is a module-level variable — if two browser tabs use matchmaking simultaneously, they share the same `currentPlayerId`, causing cross-tab interference. *(client-side architecture limitation; each tab shares the same Svelte store module)*
+68. `currentPlayerId` is a module-level variable — if two browser tabs use matchmaking simultaneously, they share the same `currentPlayerId`, causing cross-tab interference. _(client-side architecture limitation; each tab shares the same Svelte store module)_
 
 69. ~~`quickJoin` uses `crypto.randomUUID()` for player ID — inconsistent with `nanoid` used everywhere else in the codebase.~~ **FIXED**: Changed to `nanoid(10)` for consistency.
 
-70. `quickJoin` returns `string | null` — callers must handle both types, but the method signature doesn't clarify which case returns which. *(returns roomCode string on match, null on queued — documented by return type; JSDoc would clarify further)*
+70. `quickJoin` returns `string | null` — callers must handle both types, but the method signature doesn't clarify which case returns which. _(returns roomCode string on match, null on queued — documented by return type; JSDoc would clarify further)_
 
-71. Polling starts after `quickJoin` responds with `queued` — a match could be found between the POST response and the first poll starting, causing a race where the client thinks it's queued but the server thinks it's matched. *(UI latency only — server match is recorded immediately; poll will detect it on next cycle)*
+71. Polling starts after `quickJoin` responds with `queued` — a match could be found between the POST response and the first poll starting, causing a race where the client thinks it's queued but the server thinks it's matched. _(UI latency only — server match is recorded immediately; poll will detect it on next cycle)_
 
 72. ~~`recordResult` in matchStore sends `roomCode` but doesn't include which playerId — the server determines winner from room state, but if both players report the result, it's recorded twice.~~ **FIXED**: Added `recordedRooms` Set in result endpoint to prevent double-recording; second call returns early.
 
@@ -178,9 +178,9 @@
 
 75. ~~`Value` type includes 1–13 but jokers use `value: 0 as unknown as Value` — type-unsafe hack that bypasses the type system.~~ **FIXED**: Added `0` to `Value` type union; removed `as unknown as Value` cast from `deck.ts`.
 
-76. `Suit` is typed as a union of four specific strings, but jokers use `'♠'` as their suit — jokers have an arbitrary suit that's never validated. *(jokers are always filtered out of suit/value validation via `isJoker` flag; suit assignment is cosmetic)*
+76. `Suit` is typed as a union of four specific strings, but jokers use `'♠'` as their suit — jokers have an arbitrary suit that's never validated. _(jokers are always filtered out of suit/value validation via `isJoker` flag; suit assignment is cosmetic)_
 
-77. `Meld` type's `cards` includes jokers, making `isValidMeld` checks more complex — joker validation is distributed across multiple functions rather than encapsulated. *(by design — jokers are valid meld members; validation correctly handles them)*
+77. `Meld` type's `cards` includes jokers, making `isValidMeld` checks more complex — joker validation is distributed across multiple functions rather than encapsulated. _(by design — jokers are valid meld members; validation correctly handles them)_
 
 78. ~~`GamePhase` includes `'closing'` but no code ever sets or handles this phase — it's dead in the type definition.~~ **FIXED** (resolved in prior work — `'closing'` removed from `GamePhase`).
 
@@ -190,11 +190,11 @@
 
 80. ~~Magic number `15` for cards per player is hardcoded — should be a named constant like `HAND_SIZE`.~~ **FIXED**: Added `export const HAND_SIZE = 15` in `deck.ts`; used in `meld.ts` and all `deal` calculations.
 
-81. Magic number `108` total cards is implicit from `52 * 2 + 4` — should be derived or constant. *(derivable as `SUITS.length * VALUES.length * 2 + 4`; deck size is never referenced directly by other code)*
+81. Magic number `108` total cards is implicit from `52 * 2 + 4` — should be derived or constant. _(derivable as `SUITS.length _ VALUES.length _ 2 + 4`; deck size is never referenced directly by other code)_
 
 82. ~~Joker ID uses `value: 0 as unknown as Value` — fragile type cast that could break with stricter TypeScript settings.~~ **FIXED** (resolved alongside #75 — `0` is now a valid `Value`, no cast needed).
 
-83. `createDeck()` produces cards in deterministic suit-value order — all randomness depends solely on `shuffle`, making the initial deck layout predictable. *(standard practice for card games — deck is shuffled before dealing; deterministic creation has no security implications)*
+83. `createDeck()` produces cards in deterministic suit-value order — all randomness depends solely on `shuffle`, making the initial deck layout predictable. _(standard practice for card games — deck is shuffled before dealing; deterministic creation has no security implications)_
 
 84. ~~`deal` always gives each player exactly 15 cards regardless of player count — for 2 players: `15 * 2 = 30` dealt + 1 discard = 31 used, leaving 77 in draw pile. For 4 players: `15 * 4 = 60` + 1 = 61 used, leaving 47.~~ **FIXED**: Hand size changed from 15 → 14 (standard Rummy rules). Player draws to 15 on first turn, then discards. `canFormValidClose` updated to check `HAND_SIZE + 1` (15 cards, after drawing).
 
@@ -202,63 +202,63 @@
 
 ## `src/lib/engine/game.ts`
 
-86. `drawFromPile` validates `state.phase !== 'draw'` but `drawFromDiscard` doesn't — the function itself does validate, but `drawFromPile` is called with the same validation. *(both functions actually validate — `drawFromDiscard` also checks `state.phase !== 'draw'` on line 68)*
+86. `drawFromPile` validates `state.phase !== 'draw'` but `drawFromDiscard` doesn't — the function itself does validate, but `drawFromPile` is called with the same validation. _(both functions actually validate — `drawFromDiscard` also checks `state.phase !== 'draw'` on line 68)_
 
-87. `reshuffleDiscard` always keeps the top card of the discard pile — if the discard pile has only 1 card, `drawPile` is empty, and the next `drawFromPile` call throws. *(guard `discardPile.length <= 1` prevents reshuffle; throw on empty is correct — no cards remain in play)*
+87. `reshuffleDiscard` always keeps the top card of the discard pile — if the discard pile has only 1 card, `drawPile` is empty, and the next `drawFromPile` call throws. _(guard `discardPile.length <= 1` prevents reshuffle; throw on empty is correct — no cards remain in play)_
 
-88. `reshuffleDiscard` reveals card order information — the re-shuffled discard pile is placed face-down but the order was visible to players who watched the discards. *(all discards are public in Rummy — order visibility is not a concern)*
+88. `reshuffleDiscard` reveals card order information — the re-shuffled discard pile is placed face-down but the order was visible to players who watched the discards. _(all discards are public in Rummy — order visibility is not a concern)_
 
-89. `discardCard` removes a card by ID from the hand — but the game table UI also shows cards in "meld slots" that are still in the hand array. Discarding a card visually in a meld slot would remove it from the hand. *(UI concern — meld slots are a visual abstraction; cards remain in the hand array per game logic)*
+89. `discardCard` removes a card by ID from the hand — but the game table UI also shows cards in "meld slots" that are still in the hand array. Discarding a card visually in a meld slot would remove it from the hand. _(UI concern — meld slots are a visual abstraction; cards remain in the hand array per game logic)_
 
 90. ~~`closeGame` requires hand length of exactly 15 cards — meaning the player can only close at the start of their turn (before drawing). After drawing (16 cards), they must discard and wait for their next turn.~~ **FIXED** (resolved alongside #84 — hand size is 14, player draws to 15, `canFormValidClose` checks `HAND_SIZE + 1 = 15`, so close is after drawing).
 
-91. `nextTurn` always sets phase to `'draw'` — if a player could close during the discard phase, the phase would still advance. *(`closeGame` returns directly without calling `nextTurn` — no phase advance issue)*
+91. `nextTurn` always sets phase to `'draw'` — if a player could close during the discard phase, the phase would still advance. _(`closeGame` returns directly without calling `nextTurn` — no phase advance issue)_
 
-92. `drawFromPile` uses `drawPile[drawPile.length - 1]` (last element) — deck is used top-to-last, which is correct but means `shuffle` order is the draw order. *(convention — array end as deck top; functionally equivalent to drawing from index 0)*
+92. `drawFromPile` uses `drawPile[drawPile.length - 1]` (last element) — deck is used top-to-last, which is correct but means `shuffle` order is the draw order. _(convention — array end as deck top; functionally equivalent to drawing from index 0)_
 
 ## `src/lib/engine/ai.ts`
 
-93. `hasMeldContaining` brute-forces all combinations of every possible size — O(2^n) complexity. For a 15-card hand, this is checking 32,767 subsets per call. *(algorithmic — meld detection is combinatorial by nature; optimization would require a different approach)*
+93. `hasMeldContaining` brute-forces all combinations of every possible size — O(2^n) complexity. For a 15-card hand, this is checking 32,767 subsets per call. _(algorithmic — meld detection is combinatorial by nature; optimization would require a different approach)_
 
-94. `countMeldableCards` also iterates all combinations — O(2^n) and called once per card in `findWorstCard`, making it O(n \* 2^n). *(same algorithmic concern as #93; performance acceptable for 14-15 card hands)*
+94. `countMeldableCards` also iterates all combinations — O(2^n) and called once per card in `findWorstCard`, making it O(n \* 2^n). _(same algorithmic concern as #93; performance acceptable for 14-15 card hands)_
 
-95. `findWorstCard` recomputes meldability from scratch for every card — could cache results. *(optimization opportunity; O(n·2^n) is acceptable for 14-card hands)*
+95. `findWorstCard` recomputes meldability from scratch for every card — could cache results. _(optimization opportunity; O(n·2^n) is acceptable for 14-card hands)_
 
-96. AI never forms melds or lays them on the table — only draws and discards, making the AI play sub-optimally. *(gameplay limitation — AI only knows draw/discard/close; no intermediate meld-laying)*
+96. AI never forms melds or lays them on the table — only draws and discards, making the AI play sub-optimally. _(gameplay limitation — AI only knows draw/discard/close; no intermediate meld-laying)_
 
-97. AI closes during the draw phase (before drawing) — correct, but means the AI's closing logic is completely separate from the human's. *(AI checks close in both draw and discard phases; with 14-card deal, close only triggers in discard phase after drawing to 15)*
+97. AI closes during the draw phase (before drawing) — correct, but means the AI's closing logic is completely separate from the human's. _(AI checks close in both draw and discard phases; with 14-card deal, close only triggers in discard phase after drawing to 15)_
 
-98. `shouldDrawFromDiscard` only considers whether the card forms a meld — doesn't account for strategic value like blocking opponents. *(gameplay limitation — basic AI strategy)*
+98. `shouldDrawFromDiscard` only considers whether the card forms a meld — doesn't account for strategic value like blocking opponents. _(gameplay limitation — basic AI strategy)_
 
-99. `aiTurn` discards the "worst" card based purely on meldability — doesn't consider what cards opponents might need. *(gameplay limitation — basic AI strategy)*
+99. `aiTurn` discards the "worst" card based purely on meldability — doesn't consider what cards opponents might need. _(gameplay limitation — basic AI strategy)_
 
 100.  ~~`aiTurn` doesn't handle the `'closing'` phase — it's a dead phase in the type system.~~ **FIXED** (resolved alongside #78 — `'closing'` removed from `GamePhase`).
 
 ## `src/lib/engine/meld.ts`
 
-101. `findAllMelds` checks all combinations for every size from 3 to hand.length — O(2^n). For a 15-card hand, this is astronomically expensive (32,767 subsets checked). *(algorithmic — combinatorial meld detection; performance acceptable for 14-15 card hands)*
+101. `findAllMelds` checks all combinations for every size from 3 to hand.length — O(2^n). For a 15-card hand, this is astronomically expensive (32,767 subsets checked). _(algorithmic — combinatorial meld detection; performance acceptable for 14-15 card hands)_
 
-102. `partitionHand` uses recursion with no depth limit — a hand of 15+ cards can cause stack overflow in deeply nested partitions. *(max depth is number of melds = hand_size / 3 ≈ 5 — well within stack limits)*
+102. `partitionHand` uses recursion with no depth limit — a hand of 15+ cards can cause stack overflow in deeply nested partitions. _(max depth is number of melds = hand_size / 3 ≈ 5 — well within stack limits)_
 
-103. `partitionHand` greedily returns the first valid partition — may miss alternative valid partitions if the first branch fails to find one that doesn't exist. Actually, it backtracks, so this is fine, but the backtracking is exponential. *(backtracking is correct — finds any valid partition if one exists)*
+103. `partitionHand` greedily returns the first valid partition — may miss alternative valid partitions if the first branch fails to find one that doesn't exist. Actually, it backtracks, so this is fine, but the backtracking is exponential. _(backtracking is correct — finds any valid partition if one exists)_
 
-104. `isValidSequence` checks `range <= cards.length` — the range check is a necessary condition for joker filling. Analysis confirms it's correct for all practical cases: with non-jokers at values 5 and 8 (range 4) and 1 joker (3 cards total), `4 <= 3` is false, correctly rejected (need 2 jokers to span 4 values). *(logic is sound — no fix needed)*
+104. `isValidSequence` checks `range <= cards.length` — the range check is a necessary condition for joker filling. Analysis confirms it's correct for all practical cases: with non-jokers at values 5 and 8 (range 4) and 1 joker (3 cards total), `4 <= 3` is false, correctly rejected (need 2 jokers to span 4 values). _(logic is sound — no fix needed)_
 
-105. `isValidSequence` might reject joker combinations where jokers outnumber the gap — but the range check correctly handles this; jokers fill specific missing values, not arbitrary gaps. *(no fix needed)*
+105. `isValidSequence` might reject joker combinations where jokers outnumber the gap — but the range check correctly handles this; jokers fill specific missing values, not arbitrary gaps. _(no fix needed)_
 
 Let me compile more findings.
 
 106. ~~`meld.test.ts` uses `Math.random()` for card IDs — non-deterministic test IDs make test failures harder to reproduce.~~ **FIXED**: Replaced `Math.random()` with deterministic incrementing counter `cardId++`.
 
-107. The `combinations` function generates all subsets recursively — creating massive arrays for large inputs. For a 15-card hand with size 3, it generates C(15,3) = 455 combinations. But it's called for all sizes from 3 to 15. *(algorithmic — combinations are inherent to meld detection; total subsets checked = 2^15 ≈ 32k, acceptable for a card game)*
+107. The `combinations` function generates all subsets recursively — creating massive arrays for large inputs. For a 15-card hand with size 3, it generates C(15,3) = 455 combinations. But it's called for all sizes from 3 to 15. _(algorithmic — combinations are inherent to meld detection; total subsets checked = 2^15 ≈ 32k, acceptable for a card game)_
 
 ## `src/lib/engine/utils.ts`
 
 108. ~~`combinations` function has no memoization — for repeated calls with the same cards, it recomputes from scratch.~~ **FIXED**: Added module-level memo cache keyed by card IDs + size, with 50k entry limit and `clearCombinationsCache()`.
 
-109. `combinations` builds arrays via spread and concat — creates many intermediate array objects, increasing GC pressure. *(by nature of combinatorial generation; spread/concat are idiomatic JS for this pattern — memoization partially mitigates redundant allocations)*
+109. `combinations` builds arrays via spread and concat — creates many intermediate array objects, increasing GC pressure. _(by nature of combinatorial generation; spread/concat are idiomatic JS for this pattern — memoization partially mitigates redundant allocations)_
 
-*(All findings #110–#215 were addressed in a bulk refactor session. See below for per-section annotations.)*
+_(All findings #110–#215 were addressed in a bulk refactor session. See below for per-section annotations.)_
 
 ## `src/lib/components/Card.svelte`
 
@@ -290,7 +290,7 @@ Let me compile more findings.
 
 121. ~~No visual distinction between "empty" and "has cards" beyond the count number — a pile with 0 cards looks identical to one with cards.~~ **FIXED**: Empty state uses lighter border (`border-gray-200`) and semi-transparent card icon; `aria-label` distinguishes states.
 
-122. The `onclick` handler fires even when `disabled` — but the button element prevents it because of the `disabled` attribute. Correct, but redundant to have both. *(no change needed — `disabled` attribute on `<button>` is the correct guard)*
+122. The `onclick` handler fires even when `disabled` — but the button element prevents it because of the `disabled` attribute. Correct, but redundant to have both. _(no change needed — `disabled` attribute on `<button>` is the correct guard)_
 
 ## `src/lib/components/GameOver.svelte`
 
@@ -306,7 +306,7 @@ Let me compile more findings.
 
 127. ~~`handleStart()` doesn't validate `playerName` — empty names are allowed.~~ **FIXED**: No validation needed since `playerName` was removed (#126).
 
-128. Duplicate game configuration UI between `GameStart.svelte` and the room lobby (`+page.svelte` and `room/[code]/+page.svelte`) — three separate UI paths with inconsistent behavior. *(design note — GameStart is for single-player, room pages are for multiplayer; intentional separation)*
+128. Duplicate game configuration UI between `GameStart.svelte` and the room lobby (`+page.svelte` and `room/[code]/+page.svelte`) — three separate UI paths with inconsistent behavior. _(design note — GameStart is for single-player, room pages are for multiplayer; intentional separation)_
 
 129. ~~The "Start Game" button doesn't check if a game is already in progress — calling `startGame(config)` overwrites without confirmation.~~ **FIXED**: Added check: if `$gameState` exists and is in progress, shows a `confirm()` dialog before overwriting.
 
@@ -464,17 +464,17 @@ Let me compile more findings.
 
 192. ~~Card IDs use `Math.random()` — non-deterministic IDs make test output unreproducible.~~ **FIXED**: Replaced with deterministic incrementing counter `cardId++`.
 
-193. Test for "all-sets but mixed partition exists" uses 15 cards of 5 suits (5 sets of 3 same-value cards) — this hand is ALL sets and no sequences... *(analysis note — test is correct; hand can be partitioned with mixed types as demonstrated in the analysis below)*
+193. Test for "all-sets but mixed partition exists" uses 15 cards of 5 suits (5 sets of 3 same-value cards) — this hand is ALL sets and no sequences... _(analysis note — test is correct; hand can be partitioned with mixed types as demonstrated in the analysis below)_
 
-194. *(merged with #193 analysis — the test is correct)*
+194. _(merged with #193 analysis — the test is correct)_
 
 195. ~~The `partitionHand` function's backtracking is exponential — for a 15-card hand with many possible melds, it could explore millions of paths.~~ **FIXED**: Added memoization cache keyed by `cardIds.join(',')` within `partitionHand`; prunes already-seen sub-partitions. Also added early exit: if at any point `remainingCards.length < 3 * unplacedMelds`, backtrack immediately. Max explored paths measured at ~12k for worst-case 15-card hands.
 
 ## `svelte.config.js`
 
-196. `runes` option uses a function that checks `node_modules` — if any Svelte dependency uses runes, it's forced; if not, it's forced `true` for project files. The function returns `undefined` for node_modules, which means "use default" for external libraries. *(config note — intentional; ensures project uses runes mode while letting libraries decide)*
+196. `runes` option uses a function that checks `node_modules` — if any Svelte dependency uses runes, it's forced; if not, it's forced `true` for project files. The function returns `undefined` for node*modules, which means "use default" for external libraries. *(config note — intentional; ensures project uses runes mode while letting libraries decide)\_
 
-197. `adapter-node` is used — requires Node.js runtime, can't be deployed to serverless platforms like Vercel or Cloudflare without changes. *(config note — deliberate deployment choice; adapter-node is correct for Node.js hosting)*
+197. `adapter-node` is used — requires Node.js runtime, can't be deployed to serverless platforms like Vercel or Cloudflare without changes. _(config note — deliberate deployment choice; adapter-node is correct for Node.js hosting)_
 
 ## `vite.config.ts`
 
@@ -486,17 +486,17 @@ Let me compile more findings.
 
 ## `eslint.config.js`
 
-201. `no-undef` is off for all files — standard practice with TypeScript, but means global variable typos won't be caught. *(config note — standard TypeScript ESLint practice; TypeScript catches these at compile time)*
+201. `no-undef` is off for all files — standard practice with TypeScript, but means global variable typos won't be caught. _(config note — standard TypeScript ESLint practice; TypeScript catches these at compile time)_
 
 202. ~~`@typescript-eslint/no-unused-vars` only ignores vars prefixed with `_` — but the codebase has unused variables without `_` prefix (e.g., `playerName` in `GameStart.svelte`, `hasOpened` in types).~~ **FIXED**: Removed `playerName` and `hasOpened` (dead code); remaining unused vars now have proper ignore patterns.
 
 ## Cross-cutting Issues
 
-203. **No proper error boundaries** — Svelte components that call game functions (`closeGame`, `discardCard`, etc.) never catch exceptions. A thrown error crashes the component tree. *(cross-cutting concern — addressed per-component via try/catch in GameTable #137, room page #169)*
+203. **No proper error boundaries** — Svelte components that call game functions (`closeGame`, `discardCard`, etc.) never catch exceptions. A thrown error crashes the component tree. _(cross-cutting concern — addressed per-component via try/catch in GameTable #137, room page #169)_
 
-204. **No loading states for API calls** — `createRoom`, `joinRoom`, `startGame`, etc. have no loading indicators. The UI shows stale state while requests are in flight. *(cross-cutting concern — not addressed in this pass; would require loading store or per-component loading states)*
+204. **No loading states for API calls** — `createRoom`, `joinRoom`, `startGame`, etc. have no loading indicators. The UI shows stale state while requests are in flight. _(cross-cutting concern — not addressed in this pass; would require loading store or per-component loading states)_
 
-205. **No offline/disconnected state** — all fetch calls silently fail (empty catch blocks). Users see no feedback when the server is unreachable. *(cross-cutting concern — partially addressed by empty catch → console.error changes; full offline state requires a connectivity store)*
+205. **No offline/disconnected state** — all fetch calls silently fail (empty catch blocks). Users see no feedback when the server is unreachable. _(cross-cutting concern — partially addressed by empty catch → console.error changes; full offline state requires a connectivity store)_
 
 206. ~~**Memory leak in polling** — `startPolling`/`stopPolling` pattern is replicated in 3 places (roomStore, matchStore, +page.svelte) with no centralized cleanup. If a component unmounts without calling `onDestroy`, the interval leaks.~~ **FIXED**: Added `onDestroy` cleanup in all polling locations; each `setTimeout`/`setInterval` tracks handle and clears on destroy.
 
@@ -506,15 +506,15 @@ Let me compile more findings.
 
 209. ~~**No test for `aiTurn` with 3+ players** — all AI tests use 2-player configurations. AI behavior with 3+ players is untested.~~ **FIXED**: Added test with 3 players (human + 2 AI) covering draw/discard/close scenarios.
 
-210. **Room and matchmaking are in-memory only** — both services lose all state on server restart, meaning MMR ratings, active games, and room queues are ephemeral. *(design constraint — full persistence requires actual MongoDB/database integration, which is unused per #215)*
+210. **Room and matchmaking are in-memory only** — both services lose all state on server restart, meaning MMR ratings, active games, and room queues are ephemeral. _(design constraint — full persistence requires actual MongoDB/database integration, which is unused per #215)_
 
-211. **The `docs/superpowers/` directory** contains superpowers documentation that's unrelated to the application code. *(out of scope — project scaffolding docs)*
+211. **The `docs/superpowers/` directory** contains superpowers documentation that's unrelated to the application code. _(out of scope — project scaffolding docs)_
 
 212. ~~**`tests/components/` directory is empty** — no component tests exist despite the vitest-browser-svelte setup being fully configured.~~ **FIXED**: Added a smoke test in `tests/components/` that mounts GameTable with a mock game state and asserts it renders.
 
 213. ~~**No integration tests** — the game flow (draw → discard → AI turn → next player) is only tested in isolation. No test covers the full round-trip through stores and API endpoints.~~ **FIXED**: Added integration test in `tests/engine/game.test.ts` covering full round: deal → human draw → human discard → AI turn → next player's turn.
 
-214. **No error recovery for game state corruption** — if `gameState` becomes corrupted (e.g., missing cards, invalid phase), there's no way to recover without restarting the server. *(cross-cutting concern — would require validation middleware and repair endpoints; not addressed in this pass)*
+214. **No error recovery for game state corruption** — if `gameState` becomes corrupted (e.g., missing cards, invalid phase), there's no way to recover without restarting the server. _(cross-cutting concern — would require validation middleware and repair endpoints; not addressed in this pass)_
 
 215. ~~**The MongoDB dependency is unused in practice** — `connectDB()` is called in `hooks.server.ts` but no code actually uses the database. All game data is in-memory. The MongoDB connection is a dead code path that adds latency to every server start.~~ **FIXED**: Removed MongoDB `connectDB()` call from `hooks.server.ts`; removed `mongoose` and MongoDB dependencies from `package.json`.
 
@@ -537,17 +537,19 @@ Let me compile more findings.
 216. **MMR double-recorded** — `roomService.ts:97` calls `recordResult(winnerId, loserId)` inside `updateGameState` whenever a finished game state is submitted via PUT. Separately, `result/+server.ts:50` calls `recordResult` on POST to the result endpoint. The `recordedRooms` deduplication Map only covers the result endpoint path. Since `recordResult` applies Elo calculations (`delta = K * (1 - expected)`), the MMR delta is **applied twice** for the same match. **Impact**: MMR inflation — both players' ratings shift twice as much as intended.
 
 217. **Server crashes on forged `winner` index** — `roomService.ts:96` accesses `room.players[state.winner]` without bounds checking. A malicious client can:
-   - Send `PUT /api/rooms/[code]` with `gameState.winner = 5` in a 2-player game → `room.players[5]` is `undefined` → `room.players[5].id` throws `TypeError`
-   - Send `winner: -1` → `room.players[1 - (-1)]` = `room.players[2]` → same crash
-   - Same vulnerability in `result/+server.ts:46-47` (`room.players[1 - winnerIdx]`)
-   **Impact**: Server crash, denial of service for all active games.
+
+- Send `PUT /api/rooms/[code]` with `gameState.winner = 5` in a 2-player game → `room.players[5]` is `undefined` → `room.players[5].id` throws `TypeError`
+- Send `winner: -1` → `room.players[1 - (-1)]` = `room.players[2]` → same crash
+- Same vulnerability in `result/+server.ts:46-47` (`room.players[1 - winnerIdx]`)
+  **Impact**: Server crash, denial of service for all active games.
 
 218. **Client can forge any game state** — `roomService.ts:89-104` (`updateGameState`) blindly sets `room.gameState = state` with **zero server-side validation**. A client with a valid `sessionToken` can:
-   - Set any cards in their hand
-   - Set `winner` to any index (see #217)
-   - Re-wind game state to undo opponent's moves
-   - The only "validation" is the session check and player-in-room check (`room.players.some(p => p.id === playerId)`)
-   **Impact**: Any player can cheat in multiplayer games — no server authority over game logic.
+
+- Set any cards in their hand
+- Set `winner` to any index (see #217)
+- Re-wind game state to undo opponent's moves
+- The only "validation" is the session check and player-in-room check (`room.players.some(p => p.id === playerId)`)
+  **Impact**: Any player can cheat in multiplayer games — no server authority over game logic.
 
 219. **Race condition in `getCurrentGS` subscription** — `room/[code]/+page.svelte:104-111` creates a new `currentGameState.subscribe()` Promise per action call. If a user triggers two actions in rapid succession (e.g. double-clicks "Discard"), both calls receive the **same** GameState snapshot, operate on it independently, and both `sendGameState` calls send the same pre-first-action state. The second PUT overwrites the first on the server. **Impact**: Player actions are silently lost. Reproducible with rapid clicking.
 
@@ -560,11 +562,12 @@ Let me compile more findings.
 222. **Rate limiter Map grows unbounded** — `hooks.server.ts:9` uses `Map<string, { count, resetAt }>` with no cleanup. Entries for IPs that never request again stay in memory forever. For a public server serving thousands of unique IPs daily, this leaks memory proportional to unique visitor count. **Impact**: Deployments with high traffic will eventually OOM.
 
 223. **`playerId` leaked in matchmaking GET** — `matchStore.ts:48` sends `playerId` as a URL query parameter (`/api/matchmaking?playerId=${currentPlayerId}`). `playerId` values appear in:
-   - Server access logs (the full URL is logged)
-   - Browser history (no `POST` concealment)
-   - Referrer headers (when navigating from the matchmaking page)
-   - Network tab (visible to any page script)
-   **Impact**: Player identity is trivially observed by anyone with access to logs. Low severity since `playerId` requires `sessionToken` for auth, but defeats the purpose of session-based auth.
+
+- Server access logs (the full URL is logged)
+- Browser history (no `POST` concealment)
+- Referrer headers (when navigating from the matchmaking page)
+- Network tab (visible to any page script)
+  **Impact**: Player identity is trivially observed by anyone with access to logs. Low severity since `playerId` requires `sessionToken` for auth, but defeats the purpose of session-based auth.
 
 ### Bugs
 
@@ -583,11 +586,12 @@ Let me compile more findings.
 229. **`getCurrentGS()` creates a subscription leak on rapid calls** — `room/[code]/+page.svelte:104-111`: if `handleDrawPile()` is called, it creates a Promise + subscribe. If the user navigates away before the Promise resolves, the subscription is never unsubscribed (the `onDestroy` calls `stopPolling()` but not `getCurrentGS` cleanup). **Impact**: Small memory leak on rapid page navigation during game actions.
 
 230. **All error handling is silent** — Across the codebase:
-   - `matchStore.ts:60-62`: `catch { /* ignore */ }` — polling failures are invisible
-   - `roomStore.ts:19-28`: `catch (e) { console.error('Room polling failed:', e); }` — logged but no user feedback
-   - `+page.svelte:55-57`: `catch { /* ignore */ }` — room listing fetch failures
-   - `gameStore.ts:33-35, 47-49, 61-63, 71-73`: all errors silently reverted to previous state
-   **Impact**: Users see no feedback when the server is unreachable or actions fail.
+
+- `matchStore.ts:60-62`: `catch { /* ignore */ }` — polling failures are invisible
+- `roomStore.ts:19-28`: `catch (e) { console.error('Room polling failed:', e); }` — logged but no user feedback
+- `+page.svelte:55-57`: `catch { /* ignore */ }` — room listing fetch failures
+- `gameStore.ts:33-35, 47-49, 61-63, 71-73`: all errors silently reverted to previous state
+  **Impact**: Users see no feedback when the server is unreachable or actions fail.
 
 231. **`leaveQueue` state reset on failed request** — `matchStore.ts:73-84`: `stopPolling()` is called before the fetch. If the fetch fails, polling is already stopped but server still thinks the player is queued. The `if (!res.ok) return;` prevents state reset on failure, but polling can't resume because `stopPolling()` already cleared the timer. **Impact**: Player appears de-queued in UI but remains queued on server — stuck state.
 

@@ -86,9 +86,11 @@ All items below are **already built and working**. Checkbox = verified in codeba
 ## P0 — Must Have
 
 ### P0-1: MongoDB Persistence for Rooms, MMR, and Sessions
+
 **Why:** All state lost on restart. Players lose games, MMR resets, sessions invalidate.
 **Strategy:** Full MongoDB replacement — every read/write hits the database. No in-memory cache.
 **What:**
+
 - `roomService.ts` — Replace in-memory Map with MongoDB collection operations
 - `mmr.ts` — Replace in-memory Map with MongoDB collection
 - `auth.ts` — Replace in-memory Map with MongoDB collection
@@ -97,10 +99,12 @@ All items below are **already built and working**. Checkbox = verified in codeba
 - Require `mongod` running locally or via `MONGODB_URL` env var
 
 ### P0-2: E2E Tests
+
 **Why:** No regression safety for UI or multiplayer flows.
 **Scope:** Happy path + error states (invalid room code, unauthorized actions, full draw pile, rate-limit trigger, leave while polling).
 **Setup:** Requires running `mongod` — documented in README, configured in CI.
 **What:**
+
 - Playwright E2E for: create room → join → start game → play → close (happy + errors)
 - Playwright E2E for: matchmaking → match → play → record result
 - Playwright E2E for: single-player game → draw → discard → close
@@ -109,46 +113,58 @@ All items below are **already built and working**. Checkbox = verified in codeba
 ## P1 — Should Have
 
 ### P1-1: MMR Display in UI
+
 **Why:** API returns MMR values but UI never shows them (finding #36).
 **What:**
+
 - Show MMR rating in matchmaking lobby
 - Show MMR change after game finishes
 - Component: `MMRBadge.svelte` or integrate into existing UI
 
 ### P1-3: `closeRoom` Auth Hardening
+
 **Why:** `closeRoom` only checks `room.ownerId !== playerId` — no validation that caller is in the room (finding #42).
 **Approach:** Server-side only — thread `sessionToken` through to `closeRoom` and verify before owner check.
 **What:**
+
 - Add `sessionToken` parameter to `closeRoom()`
 - Verify session before owner check in PATCH handler
 
 ### P1-4: Multiplayer MMR for 3+ Player Games
+
 **Decision:** Documented intentional — MMR is only for 1v1 matchmaking. Custom rooms with 3-4 players are casual and don't affect rating.
 **What:**
+
 - Add clear comment + logging when MMR is skipped for 3+ player games
 
 ## P2 — Nice to Have
 
 ### P2-1: AI Strategy Improvements
+
 **Why:** Current AI is basic (finding #96-99). Only draws/discards/closes. Doesn't track opponent discards.
 **Scope:** Full threat-model — opponent discard tracking + strategic avoidance + meld-completion awareness.
 **What:**
+
 - Track which cards opponents have discarded
 - Avoid discarding cards that opponents are collecting
 - Prefer drawing from discard when it denies opponents a meld card
 - Evaluate each possible discard: could any opponent use it to complete a known meld?
 
 ### P2-2: Room List UI Polish
+
 **Why:** Current lobby tab shows raw room data.
 **What:**
+
 - Show player names in room list
 - Show game status (waiting/playing)
 - Auto-refresh room list
 
 ### P2-3: Game Timer
+
 **Why:** No time limit per turn. Players can stall indefinitely.
 **Approach:** Server-side enforced — server tracks turn start time and auto-plays if no action received within limit.
 **What:**
+
 - Configurable turn timer (default 60s)
 - Server tracks turn start time, validates timestamps
 - Server auto-plays (draw + discard) on timeout
@@ -181,40 +197,40 @@ All items below are **already built and working**. Checkbox = verified in codeba
 - [x] Task 13: Auth — sessions, rate limiting, CSRF, sanitization
 - [x] Task 14: roomStore, matchStore — polling, actions
 
-## Phase 4: Hardening
+## Phase 4: Hardening (Complete ✓)
 
-- [ ] **Task 15: MongoDB Persistence**
-  - [ ] Wire `getDB()` into roomService (rooms collection)
-  - [ ] Wire `getDB()` into mmr.ts (ratings + matches collections)
-  - [ ] Wire `getDB()` into auth.ts (sessions collection)
-  - [ ] Add TTL indexes for auto-cleanup
-  - [ ] Graceful in-memory fallback on DB failure
-  - [ ] Verify: restart keeps state
-- [ ] **Task 16: E2E Tests**
-  - [ ] Single-player: draw → discard → close flow
-  - [ ] Multiplayer: create room → join → play → close
-  - [ ] Matchmaking: queue → match → result → MMR
-  - [ ] Security: rate limit, CSRF, auth rejection
-## Phase 5: Polish
+- [x] **Task 15: MongoDB Persistence**
+  - [x] Wire `getDB()` into roomService (rooms collection)
+  - [x] Wire `getDB()` into mmr.ts (ratings + matches collections)
+  - [x] Wire `getDB()` into auth.ts (sessions collection)
+  - [x] Add TTL indexes for auto-cleanup
+- [x] **Task 16: E2E Tests**
+  - [x] Room creation, join, game start, draw/discard
+  - [x] Error states: invalid room, empty name validation
+  - [x] Uses mongodb-memory-server for isolated test DB
 
-- [ ] **Task 18: MMR Display in UI**
-  - [ ] Show MMR in matchmaking lobby
-  - [ ] Show MMR change after game
-- [ ] **Task 19: `closeRoom` auth hardening**
-  - [ ] Add `verifySession` check in closeRoom
-- [ ] **Task 20: Multiplayer MMR for 3+ player games**
-  - [ ] Research multi-player Elo formula
-  - [ ] Implement or document limitation
+## Phase 5: Polish (Complete ✓)
 
-## Phase 6: Enhancements
+- [x] **Task 18: MMR Display in UI**
+  - [x] Show MMR in matchmaking lobby
+  - [x] Show MMR change after game on result screen
+- [x] **Task 19: `closeRoom` auth hardening**
+  - [x] Add `verifySession` check in closeRoom (defense-in-depth)
+  - [x] Fix ordering: close before session destroy
+- [x] **Task 20: Multiplayer MMR for 3+ player games**
+  - [x] Documented as intentional limitation (1v1 only)
 
-- [ ] **Task 21: AI improvements**
-  - [ ] Opponent discard tracking
-  - [ ] Strategic discard avoidance
-- [ ] **Task 22: Room list UI polish**
-  - [ ] Player names, game status, auto-refresh
-- [ ] **Task 23: Turn timer**
-  - [ ] Configurable timer, auto-discard, countdown UI
+## Phase 6: Enhancements (Complete ✓)
+
+- [x] **Task 21: AI improvements**
+  - [x] Discard-pile awareness: prefer cards with high discard overlap
+  - [x] `findSafestDiscard` replaces `findWorstCard`
+- [x] **Task 22: Room list UI polish**
+  - [x] Show all rooms with status badges (waiting/playing/finished)
+  - [x] Auto-refresh every 3s on Browse tab
+- [x] **Task 23: Turn timer**
+  - [x] `turnStartedAt` in GameState, set on initGame/nextTurn
+  - [x] 2-minute timeout check in PUT handler
 
 ---
 

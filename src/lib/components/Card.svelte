@@ -51,14 +51,16 @@
 			<span class="text-lg font-bold text-white">?</span>
 		</div>
 	{:else if card.isJoker && card.jokerType === 'colored'}
-		<div class="flex h-full w-full flex-col items-center justify-center rounded-xl bg-linear-to-br from-rose-400 via-amber-400 to-violet-500">
+		<div
+			class="flex h-full w-full flex-col items-center justify-center rounded-xl bg-linear-to-br from-rose-400 via-amber-400 to-violet-500"
+		>
 			<span class="text-xl font-black text-white drop-shadow sm:text-2xl">★</span>
-			<span class="text-[9px] font-bold uppercase tracking-widest text-white/90">Wild</span>
+			<span class="text-[9px] font-bold tracking-widest text-white/90 uppercase">Wild</span>
 		</div>
 	{:else if card.isJoker}
 		<div class="flex h-full w-full flex-col items-center justify-center rounded-xl bg-gray-900">
 			<span class="text-xl font-black text-white sm:text-2xl">★</span>
-			<span class="text-[9px] font-bold uppercase tracking-widest text-white/60">Joker</span>
+			<span class="text-[9px] font-bold tracking-widest text-white/60 uppercase">Joker</span>
 		</div>
 	{:else}
 		<span
@@ -66,6 +68,8 @@
 				? 'text-red-500'
 				: 'text-gray-900'}">{displayValue(card)}</span
 		>
-		<span class="text-xl sm:text-2xl {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
+		<span class="text-xl sm:text-2xl {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}"
+			>{card.suit}</span
+		>
 	{/if}
 </button>

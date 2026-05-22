@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Remi E2E', () => {
-
 	test('Room creation and waiting lobby', async ({ page }) => {
 		await page.goto('/');
 		await expect(page.getByText('Remi')).toBeVisible();

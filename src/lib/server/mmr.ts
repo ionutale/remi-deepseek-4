@@ -44,11 +44,7 @@ async function getQueue(): Promise<QueueEntry[]> {
 }
 
 async function setQueue(entries: QueueEntry[]): Promise<void> {
-	await queueCol().updateOne(
-		{ _id: QUEUE_DOC_ID },
-		{ $set: { entries } },
-		{ upsert: true }
-	);
+	await queueCol().updateOne({ _id: QUEUE_DOC_ID }, { $set: { entries } }, { upsert: true });
 }
 
 function mmrDiff(entry: QueueEntry, now: number): number {
@@ -129,10 +125,7 @@ export async function removeMatch(playerId: string): Promise<void> {
 	const doc = await activeMatchesCol().findOne({ playerId });
 	if (doc) {
 		await activeMatchesCol().deleteMany({
-			$or: [
-				{ playerId: doc.player1Id },
-				{ playerId: doc.player2Id }
-			]
+			$or: [{ playerId: doc.player1Id }, { playerId: doc.player2Id }]
 		});
 	}
 }
@@ -146,7 +139,10 @@ export async function recordResult(winnerId: string, loserId: string): Promise<v
 	const expected = 1 / (1 + Math.pow(10, (loserMMR - winnerMMR) / 400));
 	const delta = Math.round(K_FACTOR * (1 - expected));
 	await ratingsCol().updateOne({ playerId: winnerId }, { $set: { mmr: winnerMMR + delta } });
-	await ratingsCol().updateOne({ playerId: loserId }, { $set: { mmr: Math.max(0, loserMMR - delta) } });
+	await ratingsCol().updateOne(
+		{ playerId: loserId },
+		{ $set: { mmr: Math.max(0, loserMMR - delta) } }
+	);
 }
 
 export async function isQueued(playerId: string): Promise<boolean> {
@@ -167,7 +163,9 @@ const CLEANUP_INTERVAL_MS = 60_000;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 export function startCleanupTimer(): void {
 	if (cleanupTimer) return;
-	cleanupTimer = setInterval(() => { cleanAbandonedMatches().catch(console.error); }, CLEANUP_INTERVAL_MS);
+	cleanupTimer = setInterval(() => {
+		cleanAbandonedMatches().catch(console.error);
+	}, CLEANUP_INTERVAL_MS);
 }
 export function stopCleanupTimer(): void {
 	if (cleanupTimer) {

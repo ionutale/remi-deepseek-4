@@ -86,7 +86,9 @@
 >
 	<!-- Header row: label + organize button -->
 	<div class="mb-2 flex items-center justify-between px-1">
-		<span class="text-[11px] font-medium tracking-widest text-amber-200/40 uppercase">Meld Board</span>
+		<span class="text-[11px] font-medium tracking-widest text-amber-200/40 uppercase"
+			>Meld Board</span
+		>
 		{#if onsuggest}
 			<button
 				class="flex items-center gap-1 rounded-md border border-amber-200/20 bg-amber-200/10 px-2 py-0.5 text-[11px] font-medium text-amber-200/70 transition hover:border-amber-300/50 hover:bg-amber-200/20 hover:text-amber-100 active:scale-95"
@@ -99,7 +101,10 @@
 	</div>
 
 	<!-- Top rail shadow line -->
-	<div class="mb-2 h-px w-full rounded-full opacity-40" style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"></div>
+	<div
+		class="mb-2 h-px w-full rounded-full opacity-40"
+		style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"
+	></div>
 
 	<div class="flex flex-col gap-3">
 		{#each { length: rows } as _, rowIdx (rowIdx)}
@@ -118,20 +123,29 @@
 					<div
 						class="relative flex min-h-30 flex-1 items-center gap-1 rounded-lg border-2 px-2 py-2 transition-all duration-150
 							{meld
-								? valid
-									? 'border-green-400/50 bg-white/[0.07]'
-									: 'border-red-400/50 bg-white/[0.07]'
-								: 'border-dashed border-amber-200/20 bg-black/20'}
+							? valid
+								? 'border-green-400/50 bg-white/[0.07]'
+								: 'border-red-400/50 bg-white/[0.07]'
+							: 'border-dashed border-amber-200/20 bg-black/20'}
 							{isOver ? 'scale-[1.02] border-amber-300/70 bg-amber-300/10 shadow-lg' : ''}
 							{isDraggingThis ? 'opacity-40' : ''}
 							cursor-pointer"
 						ondragover={(e) => handleDragOver(e, slotIndex)}
 						ondragleave={(e) => handleDragLeave(e, slotIndex)}
 						ondrop={(e) => handleDrop(e, slotIndex)}
-						onclick={() => { if (meld) for (const c of meld.cards) oncardback?.(c.id); }}
-						onkeydown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && meld) { e.preventDefault(); for (const c of meld.cards) oncardback?.(c.id); }}}
+						onclick={() => {
+							if (meld) for (const c of meld.cards) oncardback?.(c.id);
+						}}
+						onkeydown={(e) => {
+							if ((e.key === 'Enter' || e.key === ' ') && meld) {
+								e.preventDefault();
+								for (const c of meld.cards) oncardback?.(c.id);
+							}
+						}}
 						role="button"
-						aria-label="Meld slot {slotIndex + 1}{meld ? ` — ${meld.cards.length} cards, ${valid ? 'valid' : 'invalid'}` : ' — empty'}"
+						aria-label="Meld slot {slotIndex + 1}{meld
+							? ` — ${meld.cards.length} cards, ${valid ? 'valid' : 'invalid'}`
+							: ' — empty'}"
 						tabindex="0"
 					>
 						{#if meld}
@@ -146,7 +160,10 @@
 								ondragstart={(e) => handleMeldDragStart(e, slotIndex)}
 							>
 								<!-- Drag grip -->
-								<div class="mr-1 flex flex-col gap-0.5 opacity-30 hover:opacity-70 cursor-grab active:cursor-grabbing" aria-hidden="true">
+								<div
+									class="mr-1 flex cursor-grab flex-col gap-0.5 opacity-30 hover:opacity-70 active:cursor-grabbing"
+									aria-hidden="true"
+								>
 									{#each { length: 4 } as _}
 										<div class="h-px w-3 rounded-full bg-amber-200"></div>
 									{/each}
@@ -164,35 +181,71 @@
 									>
 										<!-- Compact tile -->
 										{#if card.isJoker && card.jokerType === 'colored'}
-											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md shadow-sm sm:h-20 sm:w-14 bg-linear-to-br from-rose-400 via-amber-400 to-violet-500">
+											<div
+												class="flex h-16 w-11 flex-col items-center justify-center rounded-md bg-linear-to-br from-rose-400 via-amber-400 to-violet-500 shadow-sm sm:h-20 sm:w-14"
+											>
 												<span class="text-lg font-black text-white drop-shadow">★</span>
-												<span class="text-[8px] font-bold uppercase tracking-widest text-white/90">Wild</span>
+												<span class="text-[8px] font-bold tracking-widest text-white/90 uppercase"
+													>Wild</span
+												>
 											</div>
 										{:else if card.isJoker}
-											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md shadow-sm sm:h-20 sm:w-14 bg-gray-900">
+											<div
+												class="flex h-16 w-11 flex-col items-center justify-center rounded-md bg-gray-900 shadow-sm sm:h-20 sm:w-14"
+											>
 												<span class="text-lg font-black text-white">★</span>
-												<span class="text-[8px] font-bold uppercase tracking-widest text-white/60">Joker</span>
+												<span class="text-[8px] font-bold tracking-widest text-white/60 uppercase"
+													>Joker</span
+												>
 											</div>
 										{:else}
-											<div class="flex h-16 w-11 flex-col items-center justify-center rounded-md border border-gray-200 bg-white shadow-sm sm:h-20 sm:w-14">
-												<span class="text-xs font-bold leading-none sm:text-sm {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.value === 1 ? 'A' : card.value === 11 ? 'J' : card.value === 12 ? 'Q' : card.value === 13 ? 'K' : card.value}</span>
-												<span class="text-sm sm:text-base {isRed(card.suit) ? 'text-red-500' : 'text-gray-900'}">{card.suit}</span>
+											<div
+												class="flex h-16 w-11 flex-col items-center justify-center rounded-md border border-gray-200 bg-white shadow-sm sm:h-20 sm:w-14"
+											>
+												<span
+													class="text-xs leading-none font-bold sm:text-sm {isRed(card.suit)
+														? 'text-red-500'
+														: 'text-gray-900'}"
+													>{card.value === 1
+														? 'A'
+														: card.value === 11
+															? 'J'
+															: card.value === 12
+																? 'Q'
+																: card.value === 13
+																	? 'K'
+																	: card.value}</span
+												>
+												<span
+													class="text-sm sm:text-base {isRed(card.suit)
+														? 'text-red-500'
+														: 'text-gray-900'}">{card.suit}</span
+												>
 											</div>
 										{/if}
 										<!-- Remove button -->
 										<button
 											class="absolute -top-1.5 -right-1.5 z-10 hidden h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white shadow group-hover:flex hover:bg-red-600"
-											onclick={(e) => { e.stopPropagation(); oncardback?.(card.id); }}
-											aria-label="Remove {cardLabel(card)} from meld"
-										>×</button>
+											onclick={(e) => {
+												e.stopPropagation();
+												oncardback?.(card.id);
+											}}
+											aria-label="Remove {cardLabel(card)} from meld">×</button
+										>
 									</div>
 								{/each}
 							</div>
 
 							<!-- Validity badge -->
-							<div class="absolute top-1 right-1.5 text-[9px] font-bold uppercase tracking-wider
-								{valid ? 'text-green-400' : 'text-red-400'}">
-								{valid ? '✓' : '✗'}&nbsp;{meld.type === 'set' ? 'Set' : meld.type === 'joker-meld' ? 'Wild' : 'Seq'}
+							<div
+								class="absolute top-1 right-1.5 text-[9px] font-bold tracking-wider uppercase
+								{valid ? 'text-green-400' : 'text-red-400'}"
+							>
+								{valid ? '✓' : '✗'}&nbsp;{meld.type === 'set'
+									? 'Set'
+									: meld.type === 'joker-meld'
+										? 'Wild'
+										: 'Seq'}
 							</div>
 						{:else}
 							<!-- Empty slot -->
@@ -212,5 +265,8 @@
 	</div>
 
 	<!-- Bottom rail shadow line -->
-	<div class="mt-2 h-px w-full rounded-full opacity-40" style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"></div>
+	<div
+		class="mt-2 h-px w-full rounded-full opacity-40"
+		style="background: linear-gradient(90deg, transparent, #d4a96a, transparent);"
+	></div>
 </div>

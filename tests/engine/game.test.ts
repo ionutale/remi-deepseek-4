@@ -106,13 +106,23 @@ describe('closeGame', () => {
 		// 4 valid melds (14 cards) + 1 spare (J♥ fits no meld)
 		const validHand: Card[] = [
 			// set: four 5s
-			card('♠', 5), card('♥', 5), card('♦', 5), card('♣', 5),
+			card('♠', 5),
+			card('♥', 5),
+			card('♦', 5),
+			card('♣', 5),
 			// set: three 7s
-			card('♠', 7), card('♥', 7), card('♦', 7),
+			card('♠', 7),
+			card('♥', 7),
+			card('♦', 7),
 			// sequence: 9-10-11-12 of spades
-			card('♠', 9), card('♠', 10), card('♠', 11), card('♠', 12),
+			card('♠', 9),
+			card('♠', 10),
+			card('♠', 11),
+			card('♠', 12),
 			// sequence: 2-3-4 of clubs
-			card('♣', 2), card('♣', 3), card('♣', 4),
+			card('♣', 2),
+			card('♣', 3),
+			card('♣', 4),
 			// spare — does not fit any meld above
 			card('♥', 11)
 		];

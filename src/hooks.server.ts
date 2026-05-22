@@ -9,7 +9,10 @@ connectDB()
 		startMmrCleanup();
 	})
 	.catch((err) => {
-		console.error('MongoDB connection failed — game state is in-memory only and will be lost on restart', err);
+		console.error(
+			'MongoDB connection failed — game state is in-memory only and will be lost on restart',
+			err
+		);
 	});
 
 const RATE_LIMIT_WINDOW_MS = 60_000;

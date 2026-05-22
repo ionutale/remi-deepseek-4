@@ -36,7 +36,10 @@ export function stopPolling() {
 	}
 }
 
-export async function joinRoom(code: string, name: string): Promise<{ room?: Room; playerId?: string; sessionToken?: string; error?: string }> {
+export async function joinRoom(
+	code: string,
+	name: string
+): Promise<{ room?: Room; playerId?: string; sessionToken?: string; error?: string }> {
 	const res = await fetch(`/api/rooms/${code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
@@ -75,7 +78,11 @@ export async function startGame() {
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'start', playerId: get(playerId), sessionToken: get(sessionToken) })
+		body: JSON.stringify({
+			action: 'start',
+			playerId: get(playerId),
+			sessionToken: get(sessionToken)
+		})
 	});
 	if (!res.ok) console.error('Failed to start game:', await res.text());
 }
@@ -86,7 +93,11 @@ export async function restartGame() {
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'restart', playerId: get(playerId), sessionToken: get(sessionToken) })
+		body: JSON.stringify({
+			action: 'restart',
+			playerId: get(playerId),
+			sessionToken: get(sessionToken)
+		})
 	});
 	if (!res.ok) console.error('Failed to restart game:', await res.text());
 }
@@ -97,7 +108,11 @@ export async function closeRoomAction() {
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'close', playerId: get(playerId), sessionToken: get(sessionToken) })
+		body: JSON.stringify({
+			action: 'close',
+			playerId: get(playerId),
+			sessionToken: get(sessionToken)
+		})
 	});
 	if (!res.ok) {
 		console.error('Failed to close room:', await res.text());
@@ -113,7 +128,11 @@ export async function sendGameState(state: GameState) {
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ playerId: get(playerId), sessionToken: get(sessionToken), gameState: state })
+		body: JSON.stringify({
+			playerId: get(playerId),
+			sessionToken: get(sessionToken),
+			gameState: state
+		})
 	});
 	if (res.ok) {
 		room.update((r) => (r ? { ...r, gameState: state } : r));

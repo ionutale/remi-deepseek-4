@@ -23,7 +23,12 @@ export interface PlayerInRoom {
 
 const col = () => roomsCol<Room>();
 
-export async function createRoom(ownerName: string, maxPlayers: number = 4, code?: string, ownerId?: string): Promise<Room> {
+export async function createRoom(
+	ownerName: string,
+	maxPlayers: number = 4,
+	code?: string,
+	ownerId?: string
+): Promise<Room> {
 	const roomCode = code ?? nanoid(6).toUpperCase();
 	const id = ownerId ?? nanoid(10);
 	const now = Date.now();
@@ -124,7 +129,11 @@ export async function updateGameState(code: string, state: GameState): Promise<{
 	return {};
 }
 
-export async function closeRoom(code: string, playerId: string, sessionToken: string): Promise<{ error?: string }> {
+export async function closeRoom(
+	code: string,
+	playerId: string,
+	sessionToken: string
+): Promise<{ error?: string }> {
 	const roomCode = code.toUpperCase();
 	const room = await getRoom(code);
 	if (!room) return { error: 'Room not found' };
@@ -136,7 +145,9 @@ export async function closeRoom(code: string, playerId: string, sessionToken: st
 }
 
 export async function getAllRooms(): Promise<Room[]> {
-	return await col().find({} as any).toArray();
+	return await col()
+		.find({} as any)
+		.toArray();
 }
 
 const STALE_TIMEOUT_MS = 30_000;
@@ -151,7 +162,9 @@ export async function pingPlayer(code: string, playerId: string): Promise<void> 
 export async function cleanStalePlayers(): Promise<void> {
 	const now = Date.now();
 	const cutoff = now - STALE_TIMEOUT_MS;
-	const waitingRooms = await col().find({ status: 'waiting' } as any).toArray();
+	const waitingRooms = await col()
+		.find({ status: 'waiting' } as any)
+		.toArray();
 
 	for (const room of waitingRooms) {
 		const before = room.players.length;
@@ -166,7 +179,9 @@ export async function cleanStalePlayers(): Promise<void> {
 			);
 			if (!activePlayers.some((p: PlayerInRoom) => p.id === room.ownerId)) {
 				const newOwner = activePlayers[0];
-				console.warn(`Room ${room.code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`);
+				console.warn(
+					`Room ${room.code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`
+				);
 				await col().updateOne(
 					{ code: room.code } as any,
 					{ $set: { ownerId: newOwner.id } } as any
@@ -180,7 +195,9 @@ const CLEANUP_INTERVAL_MS = 15_000;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 export function startCleanupTimer(): void {
 	if (cleanupTimer) return;
-	cleanupTimer = setInterval(() => { cleanStalePlayers().catch(console.error); }, CLEANUP_INTERVAL_MS);
+	cleanupTimer = setInterval(() => {
+		cleanStalePlayers().catch(console.error);
+	}, CLEANUP_INTERVAL_MS);
 }
 export function stopCleanupTimer(): void {
 	if (cleanupTimer) {

@@ -36,8 +36,9 @@ describe('shuffle', () => {
 	it('changes card order', () => {
 		const deck = createDeck();
 		const originalOrder = deck.map((c) => c.id).join(',');
-		const allSame = Array.from({ length: 10 }, () => shuffle(deck))
-			.every((s) => s.map((c) => c.id).join(',') === originalOrder);
+		const allSame = Array.from({ length: 10 }, () => shuffle(deck)).every(
+			(s) => s.map((c) => c.id).join(',') === originalOrder
+		);
 		expect(allSame).toBe(false);
 	});
 

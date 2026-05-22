@@ -79,7 +79,11 @@ export async function leaveQueue(): Promise<void> {
 	const res = await fetch('/api/matchmaking', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ action: 'leave', playerId: currentPlayerId, sessionToken: currentSessionToken })
+		body: JSON.stringify({
+			action: 'leave',
+			playerId: currentPlayerId,
+			sessionToken: currentSessionToken
+		})
 	});
 	if (!res.ok) return;
 	matchStatus.set('idle');

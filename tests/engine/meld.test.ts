@@ -81,11 +81,21 @@ describe('canFormValidClose', () => {
 	it('accepts valid hand with sets and sequences (15 cards)', () => {
 		// 4 melds (14 cards) + K♥ as spare (no other Kings or consecutive ♥ in hand)
 		const hand = [
-			c('♠', 5), c('♥', 5), c('♦', 5),               // set of 5s (3)
-			c('♠', 7), c('♥', 7), c('♦', 7), c('♣', 7),    // set of 7s (4)
-			c('♠', 10), c('♠', 11), c('♠', 12),             // sequence 10-12♠ (3)
-			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),    // sequence 3-6♣ (4)
-			c('♥', 13)                                        // spare K♥
+			c('♠', 5),
+			c('♥', 5),
+			c('♦', 5), // set of 5s (3)
+			c('♠', 7),
+			c('♥', 7),
+			c('♦', 7),
+			c('♣', 7), // set of 7s (4)
+			c('♠', 10),
+			c('♠', 11),
+			c('♠', 12), // sequence 10-12♠ (3)
+			c('♣', 3),
+			c('♣', 4),
+			c('♣', 5),
+			c('♣', 6), // sequence 3-6♣ (4)
+			c('♥', 13) // spare K♥
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -135,11 +145,21 @@ describe('canFormValidClose', () => {
 	it('accepts valid hand with jokers filling gaps', () => {
 		// 4 melds (14 cards) using one joker + second joker as spare
 		const hand = [
-			c('♠', 5), c('♥', 5), c('♦', 5),                      // set of 5s (3)
-			c('♠', 7), c('♥', 7), c('♦', 7), c('♣', 7),           // set of 7s (4)
-			c('♠', 9), c('♠', 10), c('♠', 0 as Value, true),       // seq 9-10-[11]♠ via joker (3)
-			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),           // sequence 3-6♣ (4)
-			c('♠', 0 as Value, true)                                 // spare joker
+			c('♠', 5),
+			c('♥', 5),
+			c('♦', 5), // set of 5s (3)
+			c('♠', 7),
+			c('♥', 7),
+			c('♦', 7),
+			c('♣', 7), // set of 7s (4)
+			c('♠', 9),
+			c('♠', 10),
+			c('♠', 0 as Value, true), // seq 9-10-[11]♠ via joker (3)
+			c('♣', 3),
+			c('♣', 4),
+			c('♣', 5),
+			c('♣', 6), // sequence 3-6♣ (4)
+			c('♠', 0 as Value, true) // spare joker
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -210,11 +230,21 @@ describe('canFormValidClose', () => {
 		// Partition A: {5s set} {7s set} {9-12♠ seq} {2-4♣ seq}
 		// Partition B (via 5♣,6♣): {5♣,6♣,7♣?,..} — drives the algorithm to backtrack
 		const hand = [
-			c('♠', 5), c('♥', 5), c('♦', 5), c('♣', 5),    // set of 5s (4)
-			c('♠', 7), c('♥', 7), c('♦', 7),                 // set of 7s (3)
-			c('♠', 9), c('♠', 10), c('♠', 11), c('♠', 12),   // sequence 9-12♠ (4)
-			c('♣', 2), c('♣', 3), c('♣', 4),                  // sequence 2-4♣ (3)
-			c('♥', 11)                                          // spare J♥
+			c('♠', 5),
+			c('♥', 5),
+			c('♦', 5),
+			c('♣', 5), // set of 5s (4)
+			c('♠', 7),
+			c('♥', 7),
+			c('♦', 7), // set of 7s (3)
+			c('♠', 9),
+			c('♠', 10),
+			c('♠', 11),
+			c('♠', 12), // sequence 9-12♠ (4)
+			c('♣', 2),
+			c('♣', 3),
+			c('♣', 4), // sequence 2-4♣ (3)
+			c('♥', 11) // spare J♥
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -273,13 +303,22 @@ describe('canFormValidClose', () => {
 		// colored joker = wild meld, 3 real melds, 1 spare
 		// real: set(5s ♠♥♦), seq(10-12♠), seq(3-6♣) → need ≥1 set + ≥1 sequence ✓
 		const hand = [
-			c('♠', 5), c('♥', 5), c('♦', 5),              // set of 5s (3)
-			c('♠', 10), c('♠', 11), c('♠', 12),             // sequence 10-12♠ (3)
-			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),    // sequence 3-6♣ (4)
-			c('♥', 0 as Value, true, 'colored'),             // colored joker = wild meld
-			c('♥', 13),                                       // spare K♥
+			c('♠', 5),
+			c('♥', 5),
+			c('♦', 5), // set of 5s (3)
+			c('♠', 10),
+			c('♠', 11),
+			c('♠', 12), // sequence 10-12♠ (3)
+			c('♣', 3),
+			c('♣', 4),
+			c('♣', 5),
+			c('♣', 6), // sequence 3-6♣ (4)
+			c('♥', 0 as Value, true, 'colored'), // colored joker = wild meld
+			c('♥', 13), // spare K♥
 			// 3 more cards to fill 15 total — add to one of the melds
-			c('♠', 7), c('♥', 7), c('♦', 7)                 // set of 7s (3)
+			c('♠', 7),
+			c('♥', 7),
+			c('♦', 7) // set of 7s (3)
 		];
 		// 15 cards: set(3) + seq(3) + seq(4) + set(3) = 13 real + joker + spare = 15
 		// Removing spare: 14 = joker(1) + 3 real melds(13) covering ≥1 set + ≥1 seq ✓
@@ -289,12 +328,21 @@ describe('canFormValidClose', () => {
 	it('accepts close with colored joker as wild meld and black joker as wild card', () => {
 		// black joker fills a gap in a sequence; colored joker = entire meld
 		const hand = [
-			c('♠', 5), c('♥', 5), c('♦', 5),                        // set of 5s (3)
-			c('♠', 9), c('♠', 10), c('♠', 0 as Value, true, 'black'), // seq 9-10-[11]♠ via black joker (3)
-			c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6),              // sequence 3-6♣ (4)
-			c('♥', 0 as Value, true, 'colored'),                       // colored joker = wild meld
-			c('♥', 13),                                                  // spare K♥
-			c('♠', 7), c('♥', 7), c('♦', 7)                           // set of 7s (3)
+			c('♠', 5),
+			c('♥', 5),
+			c('♦', 5), // set of 5s (3)
+			c('♠', 9),
+			c('♠', 10),
+			c('♠', 0 as Value, true, 'black'), // seq 9-10-[11]♠ via black joker (3)
+			c('♣', 3),
+			c('♣', 4),
+			c('♣', 5),
+			c('♣', 6), // sequence 3-6♣ (4)
+			c('♥', 0 as Value, true, 'colored'), // colored joker = wild meld
+			c('♥', 13), // spare K♥
+			c('♠', 7),
+			c('♥', 7),
+			c('♦', 7) // set of 7s (3)
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});

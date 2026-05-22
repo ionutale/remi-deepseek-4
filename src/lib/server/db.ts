@@ -81,8 +81,18 @@ async function ensureIndexes(d: Db): Promise<void> {
 	await d.collection('activeMatches').createIndex({ playerId: 1 }, { unique: true });
 }
 
-export function roomsCol<T extends Document>(): Collection<T> { return getDB().collection<T>('rooms'); }
-export function ratingsCol(): Collection<RatingDoc> { return getDB().collection<RatingDoc>('ratings'); }
-export function sessionsCol(): Collection<SessionDoc> { return getDB().collection<SessionDoc>('sessions'); }
-export function queueCol(): Collection<QueueDoc> { return getDB().collection<QueueDoc>('queue'); }
-export function activeMatchesCol(): Collection<ActiveMatchDoc> { return getDB().collection<ActiveMatchDoc>('activeMatches'); }
+export function roomsCol<T extends Document>(): Collection<T> {
+	return getDB().collection<T>('rooms');
+}
+export function ratingsCol(): Collection<RatingDoc> {
+	return getDB().collection<RatingDoc>('ratings');
+}
+export function sessionsCol(): Collection<SessionDoc> {
+	return getDB().collection<SessionDoc>('sessions');
+}
+export function queueCol(): Collection<QueueDoc> {
+	return getDB().collection<QueueDoc>('queue');
+}
+export function activeMatchesCol(): Collection<ActiveMatchDoc> {
+	return getDB().collection<ActiveMatchDoc>('activeMatches');
+}

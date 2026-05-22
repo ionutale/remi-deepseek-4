@@ -45,8 +45,10 @@
 		meldSlots.map((cards) => {
 			if (cards.length === 0) return null;
 			const nonJokers = cards.filter((c) => !c.isJoker);
-			const allSameSuit = nonJokers.length > 0 && nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
-			const allSameValue = nonJokers.length > 0 && nonJokers.every((c) => c.value === nonJokers[0]?.value);
+			const allSameSuit =
+				nonJokers.length > 0 && nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
+			const allSameValue =
+				nonJokers.length > 0 && nonJokers.every((c) => c.value === nonJokers[0]?.value);
 			const type: MeldType = allSameValue ? 'set' : allSameSuit ? 'sequence' : 'set';
 			return { cards, type };
 		})

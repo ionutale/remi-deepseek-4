@@ -6,7 +6,7 @@ export default defineConfig({
 		port: 4173,
 		timeout: 120_000,
 		stdout: 'pipe',
-		stderr: 'pipe',
+		stderr: 'pipe'
 	},
-	testMatch: '**/*.e2e.{ts,js}',
+	testMatch: '**/*.e2e.{ts,js}'
 });

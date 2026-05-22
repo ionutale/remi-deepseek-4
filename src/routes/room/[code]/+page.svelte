@@ -244,19 +244,20 @@
 			</div>
 		</div>
 	{:else if $roomStatus === 'playing' && $currentGameState}
-		<div class="flex min-h-screen flex-col bg-linear-to-br from-green-800 to-green-900 -m-4 p-2 sm:p-4">
-
+		<div
+			class="-m-4 flex min-h-screen flex-col bg-linear-to-br from-green-800 to-green-900 p-2 sm:p-4"
+		>
 			<!-- Header -->
 			<div class="flex items-center justify-between px-2 py-1">
 				<div class="flex items-center gap-2">
-					<span class="badge badge-lg badge-primary font-mono">{code}</span>
+					<span class="badge font-mono badge-lg badge-primary">{code}</span>
 				</div>
 				<div class="flex items-center gap-3">
 					<span class="text-sm text-white/80">Pile: {$drawCount}</span>
 					<span class="badge {$isMyTurn ? 'badge-success' : 'badge-ghost'}">
 						{$isMyTurn ? 'Your turn' : 'Waiting...'}
 					</span>
-					<button class="btn btn-ghost btn-xs text-white/60" onclick={handleLeave}>Leave</button>
+					<button class="btn text-white/60 btn-ghost btn-xs" onclick={handleLeave}>Leave</button>
 				</div>
 			</div>
 
@@ -308,7 +309,7 @@
 				<div class="flex justify-center gap-2 pb-2">
 					{#if $gamePhase === 'discard'}
 						<button
-							class="btn btn-warning btn-sm"
+							class="btn btn-sm btn-warning"
 							onclick={handleDiscardSelected}
 							disabled={!selectedCardId}
 						>
@@ -316,7 +317,7 @@
 						</button>
 					{/if}
 					{#if canClose}
-						<button class="btn btn-success btn-sm" onclick={handleClose}>Close Game</button>
+						<button class="btn btn-sm btn-success" onclick={handleClose}>Close Game</button>
 					{/if}
 				</div>
 			{/if}

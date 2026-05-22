@@ -14,7 +14,7 @@ async function main() {
 
 	const server = spawn('node', ['build/index.js'], {
 		stdio: 'inherit',
-		env: { ...process.env, PORT: port },
+		env: { ...process.env, PORT: port }
 	});
 
 	server.on('exit', async (code) => {
