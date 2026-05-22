@@ -8,7 +8,7 @@ export const sessionToken = writable<string>('');
 export const playerName = writable<string>('');
 
 export const currentGameState = derived(room, ($room) => $room?.gameState ?? null);
-export const roomStatus = derived(room, ($room) => $room?.status ?? 'waiting');
+export const roomStatus = derived(room, ($room) => $room?.status ?? null);
 export const players = derived(room, ($room) => $room?.players ?? []);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;

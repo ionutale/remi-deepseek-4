@@ -6,6 +6,7 @@ test.describe('Remi E2E', () => {
 		await expect(page.getByText('Remi')).toBeVisible();
 
 		await page.fill('input[placeholder="Player"]', 'Alice');
+		await page.locator('.join button:has-text("2")').click();
 		await page.click('button:has-text("Create Room")');
 
 		await page.waitForURL(/\/room\//);
@@ -27,6 +28,7 @@ test.describe('Remi E2E', () => {
 		// Create room as Alice
 		await page.goto('/');
 		await page.fill('input[placeholder="Player"]', 'Alice');
+		await page.locator('.join button:has-text("2")').click();
 		await page.click('button:has-text("Create Room")');
 		await page.waitForURL(/\/room\//);
 		const roomCode = page.url().split('/').pop()!;
