@@ -33,22 +33,6 @@ function countMeldableCards(cards: Card[]): number {
 	return melded.size;
 }
 
-export function findWorstCard(hand: Card[]): Card {
-	let worstCard = hand[0];
-	let maxMeldable = -1;
-
-	for (const card of hand) {
-		const remaining = hand.filter((c) => c.id !== card.id);
-		const meldable = countMeldableCards(remaining);
-		if (meldable > maxMeldable) {
-			maxMeldable = meldable;
-			worstCard = card;
-		}
-	}
-
-	return worstCard;
-}
-
 function countDiscardOverlaps(card: Card, discardPile: Card[]): number {
 	let count = 0;
 	for (const d of discardPile) {

@@ -54,7 +54,6 @@ export function playerDiscard(cardId: string) {
 		if (!state) return state;
 		try {
 			let newState = discardCard(state, cardId);
-			if (newState.phase === 'finished') return newState;
 			newState = runAITurns(newState);
 			return newState;
 		} catch {
