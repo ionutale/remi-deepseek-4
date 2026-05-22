@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { ratingsCol, queueCol, activeMatchesCol } from './db';
 
 const DEFAULT_MMR = 1000;
 const K_FACTOR = 32;
@@ -22,16 +23,32 @@ export interface MatchInfo {
 	createdAt: number;
 }
 
-const mmrMap = new Map<string, number>();
-const queue: QueueEntry[] = [];
-const activeMatches = new Map<string, MatchInfo>();
+const QUEUE_DOC_ID = 'queue';
 
-export function getMMR(playerId: string): number {
-	return mmrMap.get(playerId) ?? DEFAULT_MMR;
+export async function getMMR(playerId: string): Promise<number> {
+	const doc = await ratingsCol().findOne({ playerId });
+	return doc?.mmr ?? DEFAULT_MMR;
 }
 
-export function ensureMMR(playerId: string): void {
-	if (!mmrMap.has(playerId)) mmrMap.set(playerId, DEFAULT_MMR);
+export async function ensureMMR(playerId: string): Promise<void> {
+	await ratingsCol().updateOne(
+		{ playerId },
+		{ $setOnInsert: { playerId, mmr: DEFAULT_MMR } },
+		{ upsert: true }
+	);
+}
+
+async function getQueue(): Promise<QueueEntry[]> {
+	const doc = await queueCol().findOne({ _id: QUEUE_DOC_ID });
+	return doc?.entries ?? [];
+}
+
+async function setQueue(entries: QueueEntry[]): Promise<void> {
+	await queueCol().updateOne(
+		{ _id: QUEUE_DOC_ID },
+		{ $set: { entries } },
+		{ upsert: true }
+	);
 }
 
 function mmrDiff(entry: QueueEntry, now: number): number {
@@ -39,13 +56,15 @@ function mmrDiff(entry: QueueEntry, now: number): number {
 	return Math.min(INITIAL_MMR_DIFF + Math.floor(wait / MATCH_RANGE_EXPAND_MS) * 50, MAX_MMR_DIFF);
 }
 
-export function tryMatch(
+export async function tryMatch(
 	playerId: string,
 	playerName: string
-): { matched: MatchInfo } | { queued: true } {
-	ensureMMR(playerId);
-	const mmr = getMMR(playerId);
+): Promise<{ matched: MatchInfo } | { queued: true }> {
+	await ensureMMR(playerId);
+	const mmr = await getMMR(playerId);
 	const now = Date.now();
+
+	const queue = await getQueue();
 
 	const existing = queue.find((e) => e.playerId === playerId);
 	if (existing) return { queued: true };
@@ -67,6 +86,7 @@ export function tryMatch(
 
 	if (best) {
 		queue.splice(queue.indexOf(best), 1);
+		await setQueue(queue);
 
 		const roomCode = nanoid(6).toUpperCase();
 		const match: MatchInfo = {
@@ -77,72 +97,81 @@ export function tryMatch(
 			player2Name: best.playerName,
 			createdAt: Date.now()
 		};
-		activeMatches.set(playerId, match);
-		activeMatches.set(best.playerId, match);
+		await activeMatchesCol().insertMany([
+			{ playerId, ...match },
+			{ playerId: best.playerId, ...match }
+		]);
 		return { matched: match };
 	}
 
 	queue.push({ playerId, playerName, mmr, joinedAt: now });
+	await setQueue(queue);
 	return { queued: true };
 }
 
-export function leaveQueue(playerId: string): void {
+export async function leaveQueue(playerId: string): Promise<void> {
+	const queue = await getQueue();
 	const idx = queue.findIndex((e) => e.playerId === playerId);
-	if (idx >= 0) queue.splice(idx, 1);
-}
-
-export function getMatch(playerId: string): MatchInfo | null {
-	return activeMatches.get(playerId) ?? null;
-}
-
-export function removeMatch(playerId: string): void {
-	const match = activeMatches.get(playerId);
-	if (match) {
-		activeMatches.delete(match.player1Id);
-		activeMatches.delete(match.player2Id);
+	if (idx >= 0) {
+		queue.splice(idx, 1);
+		await setQueue(queue);
 	}
 }
 
-export function recordResult(winnerId: string, loserId: string): void {
-	if (winnerId === loserId) return;
-	ensureMMR(winnerId);
-	ensureMMR(loserId);
-	const winnerMMR = getMMR(winnerId);
-	const loserMMR = getMMR(loserId);
-	const expected = 1 / (1 + Math.pow(10, (loserMMR - winnerMMR) / 400));
-	const delta = Math.round(K_FACTOR * (1 - expected));
-	mmrMap.set(winnerId, winnerMMR + delta);
-	mmrMap.set(loserId, Math.max(0, loserMMR - delta));
+export async function getMatch(playerId: string): Promise<MatchInfo | null> {
+	const doc = await activeMatchesCol().findOne({ playerId });
+	if (!doc) return null;
+	const { _id, playerId: _pid, ...match } = doc as any;
+	return match as MatchInfo;
 }
 
-export function isQueued(playerId: string): boolean {
+export async function removeMatch(playerId: string): Promise<void> {
+	const doc = await activeMatchesCol().findOne({ playerId });
+	if (doc) {
+		await activeMatchesCol().deleteMany({
+			$or: [
+				{ playerId: doc.player1Id },
+				{ playerId: doc.player2Id }
+			]
+		});
+	}
+}
+
+export async function recordResult(winnerId: string, loserId: string): Promise<void> {
+	if (winnerId === loserId) return;
+	await ensureMMR(winnerId);
+	await ensureMMR(loserId);
+	const winnerMMR = await getMMR(winnerId);
+	const loserMMR = await getMMR(loserId);
+	const expected = 1 / (1 + Math.pow(10, (loserMMR - winnerMMR) / 400));
+	const delta = Math.round(K_FACTOR * (1 - expected));
+	await ratingsCol().updateOne({ playerId: winnerId }, { $set: { mmr: winnerMMR + delta } });
+	await ratingsCol().updateOne({ playerId: loserId }, { $set: { mmr: Math.max(0, loserMMR - delta) } });
+}
+
+export async function isQueued(playerId: string): Promise<boolean> {
+	const queue = await getQueue();
 	return queue.some((e) => e.playerId === playerId);
 }
 
-const MATCH_TIMEOUT_MS = 3_600_000;
+export async function cleanAbandonedMatches(): Promise<void> {
+	await activeMatchesCol().deleteMany({ createdAt: { $lt: Date.now() - 3_600_000 } });
+}
 
-export function cleanAbandonedMatches(): void {
-	const cutoff = Date.now() - MATCH_TIMEOUT_MS;
-	for (const [playerId, match] of activeMatches) {
-		if (match.createdAt < cutoff) {
-			activeMatches.delete(playerId);
-			activeMatches.delete(match.player1Id === playerId ? match.player2Id : match.player1Id);
-		}
-	}
+export async function getQueueSize(): Promise<number> {
+	const queue = await getQueue();
+	return queue.length;
 }
 
 const CLEANUP_INTERVAL_MS = 60_000;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 export function startCleanupTimer(): void {
 	if (cleanupTimer) return;
-	cleanupTimer = setInterval(cleanAbandonedMatches, CLEANUP_INTERVAL_MS);
+	cleanupTimer = setInterval(() => { cleanAbandonedMatches().catch(console.error); }, CLEANUP_INTERVAL_MS);
 }
 export function stopCleanupTimer(): void {
 	if (cleanupTimer) {
 		clearInterval(cleanupTimer);
 		cleanupTimer = null;
 	}
-}
-export function getQueueSize(): number {
-	return queue.length;
 }

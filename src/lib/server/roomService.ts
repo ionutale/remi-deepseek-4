@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { GameState, GameConfig } from '$lib/engine/types';
 import { initGame } from '$lib/engine/game';
+import { roomsCol } from './db';
 import { recordResult, removeMatch } from './mmr';
 
 export interface Room {
@@ -19,9 +20,9 @@ export interface PlayerInRoom {
 	lastSeen: number;
 }
 
-const rooms = new Map<string, Room>();
+const col = () => roomsCol<Room>();
 
-export function createRoom(ownerName: string, maxPlayers: number = 4, code?: string, ownerId?: string): Room {
+export async function createRoom(ownerName: string, maxPlayers: number = 4, code?: string, ownerId?: string): Promise<Room> {
 	const roomCode = code ?? nanoid(6).toUpperCase();
 	const id = ownerId ?? nanoid(10);
 	const now = Date.now();
@@ -34,29 +35,36 @@ export function createRoom(ownerName: string, maxPlayers: number = 4, code?: str
 		createdAt: Date.now(),
 		ownerId: id
 	};
-	rooms.set(roomCode, room);
+	await col().insertOne(room as any);
 	return room;
 }
 
-export function getRoom(code: string): Room | undefined {
-	return rooms.get(code.toUpperCase());
+export async function getRoom(code: string): Promise<Room | undefined> {
+	const room = await col().findOne({ code: code.toUpperCase() } as any);
+	return room ?? undefined;
 }
 
-export function joinRoom(
+export async function joinRoom(
 	code: string,
 	playerName: string
-): { room: Room; playerId: string } | { error: string } {
-	const room = rooms.get(code.toUpperCase());
+): Promise<{ room: Room; playerId: string } | { error: string }> {
+	const roomCode = code.toUpperCase();
+	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
 	if (room.status !== 'waiting') return { error: 'Game already started' };
 	if (room.players.length >= room.maxPlayers) return { error: 'Room is full' };
 	const playerId = nanoid(10);
-	room.players.push({ id: playerId, name: playerName, lastSeen: Date.now() });
-	return { room, playerId };
+	await col().updateOne(
+		{ code: roomCode } as any,
+		{ $push: { players: { id: playerId, name: playerName, lastSeen: Date.now() } } } as any
+	);
+	const updated = await col().findOne({ code: roomCode } as any);
+	return { room: updated!, playerId };
 }
 
-export function startGame(code: string, playerId: string): { error?: string } {
-	const room = rooms.get(code.toUpperCase());
+export async function startGame(code: string, playerId: string): Promise<{ error?: string }> {
+	const roomCode = code.toUpperCase();
+	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can start' };
 	if (room.players.length < 2) return { error: 'Need at least 2 players' };
@@ -65,77 +73,100 @@ export function startGame(code: string, playerId: string): { error?: string } {
 		playerCount: room.players.length as 2 | 3 | 4,
 		humanPlayerIndex: 0
 	};
-	room.gameState = initGame(config);
-	room.status = 'playing';
+	await col().updateOne(
+		{ code: roomCode } as any,
+		{ $set: { gameState: initGame(config), status: 'playing' } } as any
+	);
 	return {};
 }
 
-export function restartGame(code: string, playerId: string): { error?: string } {
-	const room = rooms.get(code.toUpperCase());
+export async function restartGame(code: string, playerId: string): Promise<{ error?: string }> {
+	const roomCode = code.toUpperCase();
+	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can restart' };
 	if (room.status !== 'finished') return { error: 'Game not finished' };
 
-	room.players = room.players.map((p) => ({ ...p }));
 	const config: GameConfig = {
 		playerCount: room.players.length as 2 | 3 | 4,
 		humanPlayerIndex: 0
 	};
-	room.gameState = initGame(config);
-	room.status = 'playing';
+	await col().updateOne(
+		{ code: roomCode } as any,
+		{ $set: { gameState: initGame(config), status: 'playing' } } as any
+	);
 	return {};
 }
 
-export function updateGameState(code: string, state: GameState): { error?: string } {
-	const room = rooms.get(code.toUpperCase());
+export async function updateGameState(code: string, state: GameState): Promise<{ error?: string }> {
+	const roomCode = code.toUpperCase();
+	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
-	room.gameState = state;
+
+	const update: Record<string, unknown> = { gameState: state };
 	if (state.phase === 'finished') {
-		room.status = 'finished';
+		update.status = 'finished';
+		await col().updateOne({ code: roomCode } as any, { $set: update } as any);
 		if (room.players.length === 2 && state.winner !== null) {
 			const winnerId = room.players[state.winner].id;
 			const loserId = room.players[1 - state.winner].id;
-			recordResult(winnerId, loserId);
-			removeMatch(room.players[0].id);
-			removeMatch(room.players[1].id);
+			await recordResult(winnerId, loserId);
+			await removeMatch(room.players[0].id);
+			await removeMatch(room.players[1].id);
 		}
+		return {};
 	}
+
+	await col().updateOne({ code: roomCode } as any, { $set: update } as any);
 	return {};
 }
 
-export function closeRoom(code: string, playerId: string): { error?: string } {
-	const room = rooms.get(code.toUpperCase());
+export async function closeRoom(code: string, playerId: string): Promise<{ error?: string }> {
+	const roomCode = code.toUpperCase();
+	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can close' };
-	rooms.delete(code.toUpperCase());
+	await col().deleteOne({ code: roomCode } as any);
 	return {};
 }
 
-export function getAllRooms(): Room[] {
-	return Array.from(rooms.values(), (r) => structuredClone(r));
+export async function getAllRooms(): Promise<Room[]> {
+	return await col().find({} as any).toArray();
 }
 
 const STALE_TIMEOUT_MS = 30_000;
 
-export function pingPlayer(code: string, playerId: string): void {
-	const room = rooms.get(code.toUpperCase());
-	if (!room) return;
-	const player = room.players.find((p) => p.id === playerId);
-	if (player) player.lastSeen = Date.now();
+export async function pingPlayer(code: string, playerId: string): Promise<void> {
+	await col().updateOne(
+		{ code: code.toUpperCase(), 'players.id': playerId } as any,
+		{ $set: { 'players.$.lastSeen': Date.now() } } as any
+	);
 }
 
-export function cleanStalePlayers(): void {
+export async function cleanStalePlayers(): Promise<void> {
 	const now = Date.now();
-	for (const [code, room] of rooms) {
-		if (room.status !== 'waiting') continue;
+	const cutoff = now - STALE_TIMEOUT_MS;
+	const waitingRooms = await col().find({ status: 'waiting' } as any).toArray();
+
+	for (const room of waitingRooms) {
 		const before = room.players.length;
-		room.players = room.players.filter((p) => now - p.lastSeen < STALE_TIMEOUT_MS);
-		if (room.players.length === 0) {
-			rooms.delete(code);
-		} else if (room.players.length < before && !room.players.some((p) => p.id === room.ownerId)) {
-			const newOwner = room.players[0];
-			console.warn(`Room ${code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`);
-			room.ownerId = newOwner.id;
+		const activePlayers = room.players.filter((p: PlayerInRoom) => p.lastSeen >= cutoff);
+
+		if (activePlayers.length === 0) {
+			await col().deleteOne({ code: room.code } as any);
+		} else if (activePlayers.length < before) {
+			await col().updateOne(
+				{ code: room.code } as any,
+				{ $set: { players: activePlayers } } as any
+			);
+			if (!activePlayers.some((p: PlayerInRoom) => p.id === room.ownerId)) {
+				const newOwner = activePlayers[0];
+				console.warn(`Room ${room.code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`);
+				await col().updateOne(
+					{ code: room.code } as any,
+					{ $set: { ownerId: newOwner.id } } as any
+				);
+			}
 		}
 	}
 }
@@ -144,7 +175,7 @@ const CLEANUP_INTERVAL_MS = 15_000;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 export function startCleanupTimer(): void {
 	if (cleanupTimer) return;
-	cleanupTimer = setInterval(cleanStalePlayers, CLEANUP_INTERVAL_MS);
+	cleanupTimer = setInterval(() => { cleanStalePlayers().catch(console.error); }, CLEANUP_INTERVAL_MS);
 }
 export function stopCleanupTimer(): void {
 	if (cleanupTimer) {

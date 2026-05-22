@@ -9,11 +9,11 @@ export async function POST({ request }) {
 	}
 	const n = maxPlayers ?? 4;
 	const count: 2 | 3 | 4 = n <= 2 ? 2 : n >= 4 ? 4 : 3;
-	const room = createRoom(sanitizeName(ownerName), count);
-	const sessionToken = createSession(room.ownerId);
+	const room = await createRoom(sanitizeName(ownerName), count);
+	const sessionToken = await createSession(room.ownerId);
 	return json({ ...room, sessionToken });
 }
 
 export async function GET() {
-	return json(getAllRooms());
+	return json(await getAllRooms());
 }

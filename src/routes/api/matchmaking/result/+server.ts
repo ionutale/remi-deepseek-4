@@ -3,7 +3,7 @@ import { recordResult, removeMatch, getMMR } from '$lib/server/mmr';
 import { getRoom } from '$lib/server/roomService';
 import { verifySession } from '$lib/server/auth';
 
-const RECORDED_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const RECORDED_TTL_MS = 2 * 60 * 60 * 1000;
 const recordedRooms = new Map<string, number>();
 
 function hasRecorded(roomCode: string): boolean {
@@ -17,7 +17,6 @@ function hasRecorded(roomCode: string): boolean {
 }
 
 function markRecorded(roomCode: string): void {
-	// Prune expired entries to bound memory growth
 	const cutoff = Date.now() - RECORDED_TTL_MS;
 	for (const [code, ts] of recordedRooms) {
 		if (ts < cutoff) recordedRooms.delete(code);
@@ -27,12 +26,12 @@ function markRecorded(roomCode: string): void {
 
 export async function POST({ request }) {
 	const { roomCode, playerId, sessionToken } = await request.json();
-	if (!playerId || !sessionToken || !verifySession(playerId, sessionToken)) {
+	if (!playerId || !sessionToken || !(await verifySession(playerId, sessionToken))) {
 		return json({ error: 'Unauthorized' }, { status: 403 });
 	}
 	if (hasRecorded(roomCode)) return json({ ok: true });
 
-	const room = getRoom(roomCode);
+	const room = await getRoom(roomCode);
 	if (!room) return json({ error: 'Room not found' }, { status: 404 });
 	if (!room.gameState || room.gameState.phase !== 'finished') {
 		return json({ error: 'Game not finished' }, { status: 400 });
@@ -47,13 +46,13 @@ export async function POST({ request }) {
 	const loserId = room.players[1 - winnerIdx].id;
 
 	markRecorded(roomCode);
-	recordResult(winnerId, loserId);
-	removeMatch(room.players[0].id);
-	removeMatch(room.players[1].id);
+	await recordResult(winnerId, loserId);
+	await removeMatch(room.players[0].id);
+	await removeMatch(room.players[1].id);
 
 	return json({
 		ok: true,
-		winnerMMR: getMMR(winnerId),
-		loserMMR: getMMR(loserId)
+		winnerMMR: await getMMR(winnerId),
+		loserMMR: await getMMR(loserId)
 	});
 }

@@ -1,8 +1,16 @@
+import { connectDB, disconnectDB } from '$lib/server/db';
 import { startCleanupTimer as startRoomCleanup } from '$lib/server/roomService';
 import { startCleanupTimer as startMmrCleanup } from '$lib/server/mmr';
 
-startRoomCleanup();
-startMmrCleanup();
+connectDB()
+	.then(() => {
+		console.log('MongoDB connected');
+		startRoomCleanup();
+		startMmrCleanup();
+	})
+	.catch((err) => {
+		console.error('MongoDB connection failed — game state is in-memory only and will be lost on restart', err);
+	});
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 120;
@@ -43,3 +51,10 @@ export async function handle({ event, resolve }) {
 
 	return resolve(event);
 }
+
+process.on('SIGTERM', () => {
+	disconnectDB().catch(console.error);
+});
+process.on('SIGINT', () => {
+	disconnectDB().catch(console.error);
+});
