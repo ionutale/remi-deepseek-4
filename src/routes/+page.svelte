@@ -8,7 +8,8 @@
 		leaveQueue,
 		matchStatus,
 		matchRoomCode,
-		matchQueueSize
+		matchQueueSize,
+		matchMMR
 	} from '$lib/stores/matchStore';
 	import type { Room } from '$lib/server/roomService';
 
@@ -162,7 +163,12 @@
 
 			<div class="w-full">
 				<label class="form-control w-full">
-					<div class="label"><span class="label-text">Your name</span></div>
+					<div class="label">
+						<span class="label-text">Your name</span>
+						{#if $matchStatus !== 'idle'}
+							<span class="badge badge-sm badge-neutral">MMR: {$matchMMR}</span>
+						{/if}
+					</div>
 					<input
 						type="text"
 						placeholder="Player"

@@ -4,6 +4,7 @@ import { playerId as roomPlayerId, sessionToken } from './roomStore';
 export const matchStatus = writable<'idle' | 'queued' | 'matched'>('idle');
 export const matchRoomCode = writable<string | null>(null);
 export const matchQueueSize = writable(0);
+export const matchMMR = writable(1000);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let currentPlayerId = '';
@@ -28,6 +29,8 @@ export async function quickJoin(name: string): Promise<string | null> {
 		if (data.sessionToken) currentSessionToken = data.sessionToken;
 	}
 
+	if (data.mmr != null) matchMMR.set(data.mmr);
+
 	if (data.status === 'matched') {
 		matchStatus.set('matched');
 		matchRoomCode.set(data.roomCode);
@@ -48,6 +51,7 @@ export function startPolling(): void {
 			const res = await fetch(`/api/matchmaking?playerId=${currentPlayerId}`);
 			if (res.ok) {
 				const data = await res.json();
+				if (data.mmr != null) matchMMR.set(data.mmr);
 				if (data.status === 'matched') {
 					matchStatus.set('matched');
 					matchRoomCode.set(data.roomCode);

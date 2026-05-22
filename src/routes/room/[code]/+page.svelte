@@ -17,6 +17,7 @@
 		reset
 	} from '$lib/stores/roomStore';
 	import { canFormValidClose, suggestMelds } from '$lib/engine/meld';
+	import { recordResult } from '$lib/stores/matchStore';
 	import { HAND_SIZE } from '$lib/engine/deck';
 	import { drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
 	import type { Card, MeldType } from '$lib/engine/types';
@@ -70,6 +71,7 @@
 	// — Meld slot state (local staging, not sent to server) —
 	let meldSlots = $state<Card[][]>(Array.from({ length: MAX_MELD_SLOTS }, () => []));
 	let selectedCardId = $state<string | null>(null);
+	let mmrResult = $state<{ winnerMMR: number; loserMMR: number } | null>(null);
 
 	const assignedCardIds = $derived(new Set(meldSlots.flat().map((c) => c.id)));
 	const remainingHand = $derived($myHand.filter((c) => !assignedCardIds.has(c.id)));
@@ -96,6 +98,15 @@
 	// Clear selected card when the discard phase ends
 	$effect(() => {
 		if ($gamePhase !== 'discard') selectedCardId = null;
+	});
+
+	// Fetch MMR result when game finishes
+	$effect(() => {
+		if ($roomStatus === 'finished' && !mmrResult && code) {
+			recordResult(code).then((r) => {
+				if (r) mmrResult = r;
+			});
+		}
 	});
 
 	// — Meld slot helpers —
@@ -362,6 +373,12 @@
 				<div class="card-body items-center gap-4 text-center">
 					<h2 class="text-3xl font-bold text-accent">Game Over</h2>
 					<p class="text-lg">Winner: Player {($currentGameState.winner ?? -1) + 1}</p>
+					{#if mmrResult}
+						<div class="flex gap-4 text-sm">
+							<span class="badge badge-success">Winner MMR: {mmrResult.winnerMMR}</span>
+							<span class="badge badge-error">Loser MMR: {mmrResult.loserMMR}</span>
+						</div>
+					{/if}
 
 					{#if $isOwner}
 						<button class="btn w-full btn-primary" onclick={restartGame}>Play Again</button>
