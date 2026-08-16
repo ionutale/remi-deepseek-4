@@ -1,0 +1,62 @@
+diff --git a/index.js b/index.js
+index 03d4c38..1811483 100644
+--- a/index.js
++++ b/index.js
+@@ -23,14 +23,18 @@ exports.serialize = serialize;
+ var __toString = Object.prototype.toString
+ 
+ /**
+- * RegExp to match field-content in RFC 7230 sec 3.2
++ * RegExp to match cookie-name in RFC 6265 sec 4.1.1
+  *
+- * field-content = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+- * field-vchar   = VCHAR / obs-text
+- * obs-text      = %x80-FF
++ * cookie-name = token
+  */
+ 
+-var fieldContentRegExp = /^[\u0009\u0020-\u007e\u0080-\u00ff]+$/;
++var cookieNameRegExp = /^[!#$%&\x27*+\-.^_`|~0-9A-Za-z]+$/;
++
++var cookieValueRegExp = /^("?)[\u0021\u0023-\u002B\u002D-\u003A\u003C-\u005B\u005D-\u007E]*\1$/;
++
++var domainValueRegExp = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
++
++var pathValueRegExp = /^[\u0020-\u003A\u003D-\u007E]*$/;
+ 
+ /**
+  * Parse a cookie header.
+@@ -116,13 +120,13 @@ function serialize(name, val, options) {
+     throw new TypeError('option encode is invalid');
+   }
+ 
+-  if (!fieldContentRegExp.test(name)) {
++  if (!cookieNameRegExp.test(name)) {
+     throw new TypeError('argument name is invalid');
+   }
+ 
+   var value = enc(val);
+ 
+-  if (value && !fieldContentRegExp.test(value)) {
++  if (value && !cookieValueRegExp.test(value)) {
+     throw new TypeError('argument val is invalid');
+   }
+ 
+@@ -139,7 +143,7 @@ function serialize(name, val, options) {
+   }
+ 
+   if (opt.domain) {
+-    if (!fieldContentRegExp.test(opt.domain)) {
++    if (!domainValueRegExp.test(opt.domain)) {
+       throw new TypeError('option domain is invalid');
+     }
+ 
+@@ -147,7 +151,7 @@ function serialize(name, val, options) {
+   }
+ 
+   if (opt.path) {
+-    if (!fieldContentRegExp.test(opt.path)) {
++    if (!pathValueRegExp.test(opt.path)) {
+       throw new TypeError('option path is invalid');
+     }
+ 

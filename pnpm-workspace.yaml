@@ -17,3 +17,5 @@ minimumReleaseAgeExclude:
   - postcss@8.5.18
   - '@vitest/browser@4.1.10'
   - '@vitest/browser@4.1.8'
+patchedDependencies:
+  cookie@0.6.0: patches/cookie@0.6.0.patch
