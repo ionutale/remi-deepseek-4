@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-vercel';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -6,8 +6,7 @@ const config = {
 	compilerOptions: {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
-	// #197: adapter-node for Node.js deployment; alternatives: adapter-static, adapter-vercel, adapter-netlify
-	kit: { adapter: adapter() }
+	kit: { adapter: adapter({ runtime: 'nodejs22.x' }) }
 };
 
 export default config;
