@@ -1,256 +1,526 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { gameState, startGame, playerNextRound, resetGame } from '$lib/stores/gameStore';
-	import GameTable from '$lib/components/GameTable.svelte';
-	import ScoreSheet from '$lib/components/ScoreSheet.svelte';
-	import MatchOver from '$lib/components/MatchOver.svelte';
+	import TableView, {
+		type OpponentInfo,
+		type SwapTarget
+	} from '$lib/components/remi/TableView.svelte';
+	import MeldBuilder, { type PendingFormation } from '$lib/components/remi/MeldBuilder.svelte';
+	import DublePanel from '$lib/components/remi/DublePanel.svelte';
+	import AtuPanel from '$lib/components/remi/AtuPanel.svelte';
+	import PeTablaPanel from '$lib/components/remi/PeTablaPanel.svelte';
+	import EndGameSheet from '$lib/components/remi/EndGameSheet.svelte';
+	import { analyzeFormation } from '$lib/engine/remi/formations';
+	import { validatePattern } from '$lib/engine/remi/patterns';
+	import { COLORS } from '$lib/engine/remi/pieces';
+	import type { Color, PatternType, Piece } from '$lib/engine/remi/types';
+	import {
+		canAnnounceAtu,
+		HUMAN_INDEX,
+		soloAnnounceAtu,
+		soloBreakSir,
+		soloCanStrica,
+		soloClose,
+		soloDeclarePeTabla,
+		soloDiscard,
+		soloDrawStock,
+		soloError,
+		soloLipi,
+		soloMeld,
+		soloNextGame,
+		soloOfferDuble,
+		soloOpeningDiscard,
+		soloPeTablaClose,
+		soloReset,
+		soloResolveDuble,
+		soloStartPlaying,
+		startSoloGame,
+		soloState,
+		soloStrica,
+		soloSwapJoker,
+		soloTakeAtu,
+		soloTakeLast,
+		soloWithdrawDuble
+	} from '$lib/stores/remi/soloStore';
 
 	const COUNTS: readonly (2 | 3 | 4)[] = [2, 3, 4];
 
-	const FAN = [
-		{ rank: 'A', suit: '♠', x: -46, y: 8, r: -14 },
-		{ rank: 'K', suit: '♥', x: 0, y: 0, r: 0 },
-		{ rank: 'Q', suit: '♦', x: 46, y: 8, r: 14 }
-	];
-
+	// ---------- Local table state ----------
 	let playerCount = $state<2 | 3 | 4>(2);
+	let selectedId = $state<string | null>(null);
+	let builderSelection = $state<string[]>([]);
+	/** Formations staged for this turn; confirmed together in one `soloMeld`. */
+	let pendingMelds = $state<PendingFormation[]>([]);
+	let builderOpen = $state(false);
+	let breakSirMode = $state(false);
+	let breakSirTarget = $state<string | null>(null);
+	let peTablaOpen = $state(false);
+	let pattern = $state<PatternType | null>(null);
 
-	/** Table names for the score sheets: "You" plus numbered seats. */
-	let names = $derived(
-		($gameState?.players ?? []).map((_, index) => (index === 0 ? 'You' : `Player ${index + 1}`))
+	let game = $derived($soloState);
+	let rack = $derived(game?.players[HUMAN_INDEX]?.rack ?? []);
+	let me = $derived(game?.players[HUMAN_INDEX] ?? null);
+	let isMyTurn = $derived(
+		game !== null && game.phase === 'playing' && game.currentPlayerIndex === HUMAN_INDEX
+	);
+	let isFirstMeld = $derived(me !== null && !me.melded);
+	let isOpening = $derived(
+		game !== null &&
+			game.phase === 'playing' &&
+			game.turnNumber === 1 &&
+			game.table.sir.length === 0
+	);
+	let mustUse = $derived(game?.turnState.mustUsePieceIds ?? []);
+	/** The opening turn: the first player lays a piece down without drawing. */
+	let isOpeningTurn = $derived(isMyTurn && isOpening);
+
+	/** Table seats: "Tu" plus numbered calculators (spec §4). */
+	let names = $derived(game ? game.players.map((_player, index: number) => seatName(index)) : []);
+	function seatName(index: number): string {
+		return index === HUMAN_INDEX ? 'Tu' : `Calculator ${index + 1}`;
+	}
+
+	let opponents = $derived<OpponentInfo[]>(
+		game
+			? game.players.map((player, index) => ({
+					name: seatName(index),
+					pieceCount: player.rack.length,
+					isActive: game.currentPlayerIndex === index && game.phase === 'playing',
+					announcedAtu: player.announcedAtu,
+					peTablaProgress: player.peTabla
+						? validatePattern(player.peTabla.pattern, player.rack).progress
+						: null
+				}))
+			: []
 	);
 
-	function handleStart() {
-		startGame({ playerCount, humanPlayerIndex: 0 });
+	// ---------- Lipi: which melds the selected piece can extend ----------
+	let selectedPiece = $derived(rack.find((piece) => piece.id === selectedId) ?? null);
+
+	let lipiCandidateMeldIds = $derived.by((): string[] => {
+		if (!selectedPiece || game === null) return [];
+		return game.table.melds
+			.filter((meld) => {
+				if (meld.owner !== HUMAN_INDEX && me?.peTabla) return false;
+				if (meld.owner !== HUMAN_INDEX && selectedPiece.isJoker) return false;
+				return analyzeFormation(meld.type, [...meld.pieces, selectedPiece]).valid;
+			})
+			.map((meld) => meld.id);
+	});
+
+	// ---------- Joker swap: exact substitutes for a table joker ----------
+	let swapTargets = $derived.by((): SwapTarget[] => {
+		if (!selectedPiece || selectedPiece.isJoker || game === null || me?.peTabla) return [];
+		const targets: SwapTarget[] = [];
+		for (const meld of game.table.melds) {
+			// `swappedJokerIds` tracks joker pieces, not melds.
+			const analysis = analyzeFormation(meld.type, meld.pieces);
+			for (const piece of meld.pieces) {
+				if (!piece.isJoker) continue;
+				if (game.swappedJokerIds.includes(piece.id)) continue;
+				const value = analysis.jokerValues[piece.id];
+				if (value !== selectedPiece.value) continue;
+				if (!substitutableColors(meld).has(selectedPiece.color)) continue;
+				// Ropet: a joker in an unfinished terță stays locked.
+				if (meld.type === 'terta' && meld.pieces.length < 4) continue;
+				targets.push({ meldId: meld.id, jokerPieceId: piece.id });
+			}
+		}
+		return targets;
+	});
+
+	/** Colours a joker inside this meld could legally stand for. */
+	function substitutableColors(meld: { type: 'suite' | 'terta'; pieces: Piece[] }): Set<Color> {
+		const naturals = meld.pieces.filter((piece) => !piece.isJoker);
+		if (meld.type === 'suite') {
+			const colour = naturals[0]?.color;
+			return new Set<Color>(colour ? [colour] : []);
+		}
+		const taken = new Set(naturals.map((piece) => piece.color));
+		return new Set<Color>(COLORS.filter((colour) => !taken.has(colour)));
 	}
 
-	async function handleHome() {
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		await goto('/');
+	// ---------- Rupe șirul ----------
+	/** Ropet: already etalat, ≥3 pieces on the rack, and not a pe-tablă player. */
+	let canBreakSir = $derived(
+		isMyTurn &&
+			me !== null &&
+			me.melded &&
+			!me.peTabla &&
+			rack.length >= 3 &&
+			!game?.turnState.hasDrawn &&
+			(game?.table.sir.length ?? 0) > 1
+	);
+
+	let breakSirPickedUp = $derived.by((): number => {
+		if (!game || breakSirTarget === null) return 0;
+		const index = game.table.sir.findIndex((piece) => piece.id === breakSirTarget);
+		return index <= 0 ? 0 : game.table.sir.length - index;
+	});
+
+	function toggleBreakSir() {
+		breakSirMode = !breakSirMode;
+		breakSirTarget = null;
 	}
 
-	/** End of match: start a new solo match at the same table size. */
-	function handlePlayAgain() {
-		const raw = $gameState?.players.length ?? 2;
-		const count = (raw <= 2 ? 2 : raw >= 4 ? 4 : 3) as 2 | 3 | 4;
-		playerCount = count;
-		startGame({ playerCount: count, humanPlayerIndex: 0 });
+	function confirmBreakSir(pieceId: string) {
+		soloBreakSir(pieceId);
+		breakSirMode = false;
+		breakSirTarget = null;
 	}
 
-	/** End of match: clear the solo game and head back to the home screen. */
-	async function handleResetAndHome() {
-		resetGame();
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		await goto('/');
+	// ---------- Meld builder ----------
+	function openBuilder() {
+		builderSelection = [];
+		pendingMelds = [];
+		builderOpen = true;
 	}
+
+	function closeBuilder() {
+		builderOpen = false;
+		builderSelection = [];
+		pendingMelds = [];
+	}
+
+	function toggleBuilderPiece(pieceId: string) {
+		builderSelection = builderSelection.includes(pieceId)
+			? builderSelection.filter((id: string) => id !== pieceId)
+			: [...builderSelection, pieceId];
+	}
+
+	function addFormation(formation: PendingFormation) {
+		pendingMelds = [...pendingMelds, formation];
+		builderSelection = [];
+	}
+
+	function removeFormation(index: number) {
+		pendingMelds = pendingMelds.filter((_, i: number) => i !== index);
+	}
+
+	function confirmMelds(formations: PendingFormation[] = []) {
+		const list = formations.length > 0 ? formations : pendingMelds;
+		if (list.length === 0) return;
+		soloMeld(list);
+		closeBuilder();
+	}
+
+	// ---------- Turn actions ----------
+	function handleSelect(pieceId: string) {
+		selectedId = selectedId === pieceId ? null : pieceId;
+	}
+
+	function handleDiscard(pieceId: string) {
+		if (isOpeningTurn) soloOpeningDiscard(pieceId);
+		else soloDiscard(pieceId);
+		selectedId = null;
+	}
+
+	function handleClose() {
+		const last = rack[0];
+		if (last) soloClose(last.id);
+	}
+
+	function handlePeTablaClose() {
+		// The engine validates the pattern and accepts either "the board covers the
+		// whole rack" or "exactly one piece sits outside it".
+		const last = rack[0];
+		if (last) soloPeTablaClose(last.id);
+	}
+
+	/** Lipire uses the rack piece currently selected on the rack. */
+	function handleLipi(meldId: string) {
+		if (!selectedPiece) return;
+		soloLipi(meldId, selectedPiece.id);
+	}
+
+	/** Joker swap: the exact substitute is the rack piece currently selected. */
+	function handleSwapJoker(meldId: string, jokerPieceId: string) {
+		if (!selectedPiece) return;
+		soloSwapJoker(meldId, jokerPieceId, selectedPiece.id);
+	}
+
+	function handleStrica() {
+		soloStrica();
+		closeBuilder();
+	}
+
+	function handleNextGame() {
+		soloNextGame();
+		closeBuilder();
+		peTablaOpen = false;
+		pattern = null;
+		selectedId = null;
+	}
+
+	// ---------- Notices ----------
+	let notice = $derived.by((): string => {
+		if (!game || game.phase !== 'playing' || !isMyTurn) return '';
+		if (isOpeningTurn) return 'Prima tură: aruncă o piesă ca să deschizi șirul.';
+		if (me?.peTabla) return 'Joc pe tablă: trage o piesă și construiește modelul tău.';
+		if (mustUse.length > 0) return 'Folosește piesa luată într-o formație înainte să arunci.';
+		if (!game.turnState.hasDrawn) return 'Trage o piesă: din grămadă, ultima din șir sau atuul.';
+		if (rack.length === 1) return 'Îți-a rămas o singură piesă — poți închide jocul.';
+		return 'Alege o piesă și etalează, lipește, aruncă sau închide.';
+	});
+
+	let errorText = $derived($soloError);
 </script>
 
-{#if $gameState === null}
-	<div class="remi-root">
-		<div
-			class="felt relative mx-auto flex min-h-screen w-full max-w-xl flex-col items-center justify-center gap-8 px-5 py-10"
-		>
-			<div class="scene" aria-hidden="true">
-				<div class="scene-glow"></div>
-				<div class="scene-ring"></div>
-				<div class="fan">
-					{#each FAN as c (c.rank + c.suit)}
-						<div class="fan-card" style="--x:{c.x}px; --y:{c.y}px; --r:{c.r}deg">
-							<span class="fan-rank">{c.rank}</span>
-							<span class="fan-suit">{c.suit}</span>
-						</div>
-					{/each}
-				</div>
-			</div>
+<svelte:head>
+	<title>Remi Etalat · Joc solo</title>
+</svelte:head>
 
-			<div class="panel flex w-full flex-col gap-5 glass p-5 text-center sm:p-7">
-				<div class="flex flex-col gap-1">
-					<span class="eyebrow">Solo table</span>
-					<h1 class="title">Ready to deal?</h1>
-					<p class="text-sm text-amber-50/65">
-						Pick your table size and start a fresh match against the house AI.
-					</p>
-				</div>
+{#if !game}
+	<!-- Start overlay -->
+	<div class="felt-surface relative min-h-screen rounded-none p-3 sm:p-5">
+		<div class="mx-auto flex min-h-[80vh] max-w-xl flex-col justify-center gap-6">
+			<div class="glass-panel rounded-3xl p-5 text-center sm:p-7">
+				<h1 class="text-3xl font-black tracking-wide text-gold-200 sm:text-4xl">Remi Etalat</h1>
+				<p class="mt-2 text-sm text-cream-100/80">
+					Joacă împotriva calculatorului: duble, atu, etalare, lipire și pe tablă.
+				</p>
 
-				<div class="flex flex-col gap-2">
-					<span class="field-label" id="player-count-label">Players</span>
+				<div class="mt-5">
+					<span
+						class="mb-2 block text-[11px] font-bold tracking-[0.2em] text-cream-100/70 uppercase"
+						id="player-count-label"
+					>
+						Jucători
+					</span>
 					<div class="segmented" role="group" aria-labelledby="player-count-label">
-						{#each COUNTS as n (n)}
+						{#each COUNTS as count (count)}
 							<button
 								type="button"
 								class="seg-item"
-								aria-pressed={playerCount === n}
-								onclick={() => (playerCount = n)}
+								aria-pressed={playerCount === count}
+								onclick={() => (playerCount = count)}
 							>
-								{n}
-								<span class="text-[0.65rem] opacity-70">players</span>
+								{count}
+								<span class="text-[0.65rem] opacity-70">jucători</span>
 							</button>
 						{/each}
 					</div>
 				</div>
 
-				<button type="button" class="btn-gold btn w-full" onclick={handleStart}>
-					Start game vs AI
-				</button>
-				<button type="button" class="btn-quiet btn w-full" onclick={handleHome}>
-					Back to home
+				<button
+					type="button"
+					class="btn-gold btn mt-6 w-full"
+					onclick={() => startSoloGame(playerCount)}
+				>
+					Începe jocul
 				</button>
 			</div>
 		</div>
 	</div>
-{:else if $gameState.phase === 'round-over'}
-	<ScoreSheet gameState={$gameState} {names} cannextround={true} onnextround={playerNextRound} />
-{:else if $gameState.phase === 'finished'}
-	<MatchOver
-		gameState={$gameState}
-		{names}
-		myIndex={0}
-		onplayagain={handlePlayAgain}
-		onhome={handleResetAndHome}
+{:else if game.phase === 'duble'}
+	<div class="felt-surface relative min-h-screen rounded-none p-3 sm:p-5">
+		<div class="mx-auto max-w-4xl space-y-4">
+			<h1 class="text-lg font-black tracking-wide text-gold-200 sm:text-xl">Remi Etalat · Duble</h1>
+			{#if errorText}
+				<p class="glass-panel rounded-xl px-3 py-2 text-sm text-rose-200" role="alert">
+					{errorText}
+				</p>
+			{/if}
+			<DublePanel
+				pieces={rack}
+				myIndex={HUMAN_INDEX}
+				playerNames={names}
+				offers={game.dubleOffers}
+				onoffer={(pieceId) => soloOfferDuble(pieceId)}
+				onwithdraw={soloWithdrawDuble}
+				onstrica={handleStrica}
+				canStrica={soloCanStrica(game)}
+			/>
+			<div class="flex justify-end">
+				<button
+					type="button"
+					class="btn border-gold-400 bg-gold-400 font-bold text-felt-950 btn-sm hover:bg-gold-300"
+					onclick={soloResolveDuble}
+				>
+					Continuă
+				</button>
+			</div>
+		</div>
+	</div>
+{:else if game.phase === 'atu'}
+	<div class="felt-surface relative min-h-screen rounded-none p-3 sm:p-5">
+		<div class="mx-auto max-w-4xl space-y-4">
+			<h1 class="text-lg font-black tracking-wide text-gold-200 sm:text-xl">Remi Etalat · Atu</h1>
+			{#if errorText}
+				<p class="glass-panel rounded-xl px-3 py-2 text-sm text-rose-200" role="alert">
+					{errorText}
+				</p>
+			{/if}
+			<AtuPanel
+				atu={game.table.atu}
+				playerNames={names}
+				canAnnounce={canAnnounceAtu(game)}
+				announced={me?.announcedAtu ?? false}
+				onannounce={soloAnnounceAtu}
+				oncontinue={soloStartPlaying}
+			/>
+			<p class="text-center text-xs text-cream-100/60">
+				Apasă <span class="font-bold text-gold-200">Continuă jocul</span> ca să înceapă prima tură.
+			</p>
+		</div>
+	</div>
+{:else if game.phase === 'playing'}
+	<TableView
+		title="Remi Etalat · joc solo"
+		{notice}
+		{opponents}
+		myLabel="Tu ({rack.length} piese)"
+		{rack}
+		melds={game.table.melds}
+		sir={game.table.sir}
+		stockCount={game.table.stock.length}
+		atu={game.table.atu}
+		phase="playing"
+		{isMyTurn}
+		{selectedId}
+		mustUsePieceIds={mustUse}
+		{lipiCandidateMeldIds}
+		{swapTargets}
+		showBreakSir={breakSirMode}
+		onselectpiece={handleSelect}
+		ondrawstock={isMyTurn && !isOpeningTurn ? soloDrawStock : undefined}
+		ontakelast={isMyTurn && !isOpeningTurn && game.table.sir.length > 1 ? soloTakeLast : undefined}
+		ontakeatu={isMyTurn && !isOpeningTurn && game.table.atu !== null ? soloTakeAtu : undefined}
+		ondiscard={isMyTurn && !me?.peTabla ? handleDiscard : undefined}
+		onmeld={isMyTurn && !me?.peTabla && game.turnNumber > game.players.length
+			? openBuilder
+			: undefined}
+		onlipi={isMyTurn && (me?.melded ?? false) && selectedPiece ? handleLipi : undefined}
+		onswapjoker={isMyTurn && !me?.peTabla && swapTargets.length > 0 ? handleSwapJoker : undefined}
+		onbreaksir={canBreakSir && breakSirMode ? (pieceId) => (breakSirTarget = pieceId) : undefined}
+		onclose={isMyTurn && !me?.peTabla && rack.length === 1 && mustUse.length === 0
+			? handleClose
+			: undefined}
+		onpeTabla={isMyTurn && !me?.peTabla && !me?.melded && (me?.turnsTaken ?? 9) < 3
+			? () => (peTablaOpen = true)
+			: undefined}
 	/>
+
+	{#if errorText}
+		<p
+			class="glass-panel fixed inset-x-3 bottom-3 z-20 mx-auto max-w-md rounded-xl px-3 py-2 text-sm text-rose-200 sm:inset-x-0"
+			role="alert"
+		>
+			{errorText}
+		</p>
+	{/if}
+
+	<div class="mx-auto max-w-6xl space-y-4 p-3 sm:p-5">
+		<!-- Rupe șirul -->
+		{#if canBreakSir}
+			<section class="glass-panel rounded-2xl p-3 sm:p-4" aria-label="Rupe șirul">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<h2 class="text-sm font-bold tracking-wider text-gold-200 uppercase">Rupe șirul</h2>
+						<p class="text-xs text-cream-100/75">
+							Poți lua piesa și pe toate cele puse după ea. Piesa ruptă trebuie etalată în această
+							tură.
+						</p>
+					</div>
+					<button
+						type="button"
+						class="btn border-amber-300/60 font-bold text-amber-100 btn-outline btn-sm hover:bg-amber-400/20"
+						onclick={toggleBreakSir}
+					>
+						{breakSirMode ? 'Renunță' : 'Alege piesa din șir'}
+					</button>
+				</div>
+
+				{#if breakSirMode}
+					<p class="mt-2 text-xs text-amber-200" role="note">
+						Alege o piesă din șir, de pe masa comună. Prima piesă (așezată lateral) nu poate fi
+						ruptă niciodată.
+					</p>
+				{/if}
+				{#if breakSirTarget}
+					{@const target = game.table.sir.find((piece) => piece.id === breakSirTarget)}
+					<div
+						class="mt-3 rounded-xl bg-amber-500/10 p-3"
+						role="alertdialog"
+						aria-label="Confirmă ruperea șirului"
+					>
+						<p class="text-sm text-amber-100">
+							{#if target}
+								rupi șirul la <strong>{target.isJoker ? 'joker' : target.value}</strong> și primești
+								{breakSirPickedUp}
+								{breakSirPickedUp === 1 ? 'piesă' : 'piese'}.
+							{/if}
+						</p>
+						<div class="mt-2 flex flex-wrap gap-2">
+							<button
+								type="button"
+								class="btn border-amber-300/60 font-bold text-amber-100 btn-outline btn-xs hover:bg-amber-400/20"
+								onclick={() => confirmBreakSir(breakSirTarget ?? '')}
+							>
+								Confirmă
+							</button>
+							<button
+								type="button"
+								class="btn text-cream-100 btn-ghost btn-xs"
+								onclick={() => (breakSirTarget = null)}
+							>
+								Renunță
+							</button>
+						</div>
+					</div>
+				{/if}
+			</section>
+		{/if}
+
+		<!-- Meld builder -->
+		{#if builderOpen}
+			<MeldBuilder
+				pieces={rack}
+				selectedIds={builderSelection}
+				onselect={toggleBuilderPiece}
+				onconfirm={confirmMelds}
+				oncancel={closeBuilder}
+				{isFirstMeld}
+				{pendingMelds}
+				onaddformation={addFormation}
+				onremovemeld={removeFormation}
+			/>
+		{/if}
+
+		<!-- Pe tablă -->
+		{#if peTablaOpen || me?.peTabla}
+			<PeTablaPanel
+				pattern={me?.peTabla?.pattern ?? pattern}
+				pieces={rack}
+				onselect={(key) => (pattern = key)}
+				onconfirm={() => pattern && soloDeclarePeTabla(pattern)}
+				onclose={handlePeTablaClose}
+				canDeclare={isMyTurn && !me?.peTabla && !me?.melded && (me?.turnsTaken ?? 9) < 3}
+			/>
+		{/if}
+	</div>
 {:else}
-	<GameTable />
+	<!-- End of game -->
+	<div class="felt-surface relative min-h-screen rounded-none p-3 sm:p-5">
+		<div class="mx-auto max-w-4xl space-y-4">
+			<h1 class="text-lg font-black tracking-wide text-gold-200 sm:text-xl">
+				Remi Etalat · Rezultate
+			</h1>
+			<EndGameSheet
+				playerNames={names}
+				breakdowns={game.lastBreakdowns ?? []}
+				scores={game.scores}
+				sessionTotals={game.sessionTotals}
+				gameWinner={game.gameWinner}
+				closerIndex={game.closerIndex ?? null}
+				stockOut={game.endReason === 'stock-out'}
+				doubleGame={game.doubleGame}
+				onnext={handleNextGame}
+			/>
+			<button type="button" class="btn-quiet btn w-full" onclick={soloReset}>Părăsește masa</button>
+		</div>
+	</div>
 {/if}
 
 <style>
-	/* Same card-table identity as the home screen: walnut rail, emerald felt, gold accents. */
-	.remi-root {
-		min-height: 100vh;
-		background-color: #38200f;
-		background-image:
-			repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.07) 0 2px, transparent 2px 8px),
-			linear-gradient(180deg, #7a4a27 0%, #4b2c16 45%, #341c0d 100%);
-	}
-
-	.felt {
-		background-color: #05301f;
-		background-image:
-			radial-gradient(90% 62% at 50% -6%, rgba(255, 238, 196, 0.2), transparent 58%),
-			radial-gradient(75% 55% at 50% 32%, #12734a 0%, #0c5a3a 40%, #064027 72%, #03291a 100%);
-		box-shadow:
-			inset 0 0 180px rgba(0, 0, 0, 0.65),
-			inset 0 1px 0 rgba(255, 255, 255, 0.06);
-	}
-
-	.felt::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		background-image:
-			repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 6px),
-			repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.05) 0 1px, transparent 1px 6px);
-		border-radius: inherit;
-	}
-
-	.felt > * {
-		position: relative;
-	}
-
-	.panel {
-		border-radius: 1.25rem;
-		border: 1px solid rgba(232, 197, 106, 0.22);
-		box-shadow:
-			0 22px 50px -24px rgba(0, 0, 0, 0.85),
-			inset 0 1px 0 rgba(255, 255, 255, 0.08);
-	}
-
-	.glass {
-		background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
-		backdrop-filter: blur(12px);
-	}
-
-	.eyebrow {
-		font-size: 0.68rem;
-		font-weight: 600;
-		letter-spacing: 0.28em;
-		text-transform: uppercase;
-		color: rgba(243, 221, 160, 0.75);
-	}
-
-	.title {
-		font-size: clamp(1.6rem, 7vw, 2.35rem);
-		font-weight: 800;
-		line-height: 1.1;
-		color: #f8f1e0;
-		text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
-	}
-
-	/* — Decorative card fan — */
-	.scene {
-		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 100%;
-		height: clamp(120px, 34vw, 160px);
-	}
-
-	.scene-glow {
-		position: absolute;
-		inset: 4% 18%;
-		border-radius: 50%;
-		background-image: radial-gradient(closest-side, rgba(255, 236, 190, 0.22), transparent 72%);
-		filter: blur(6px);
-	}
-
-	.scene-ring {
-		position: absolute;
-		inset: 10% 22%;
-		border-radius: 50%;
-		border: 1px solid rgba(232, 197, 106, 0.22);
-	}
-
-	.fan {
-		position: relative;
-		--fan-scale: clamp(0.66, 0.32 + 16vw, 1);
-		transform: scale(var(--fan-scale));
-		height: 104px;
-	}
-
-	.fan-card {
-		position: absolute;
-		top: 4px;
-		left: calc(50% - 33px);
-		width: 66px;
-		height: 92px;
-		transform: translateX(var(--x)) translateY(var(--y)) rotate(var(--r));
-		transform-origin: 50% 135%;
-		border-radius: 8px;
-		border: 1px solid rgba(120, 90, 40, 0.35);
-		background-image: linear-gradient(160deg, #fffdf6 0%, #f3ecdc 100%);
-		box-shadow:
-			0 14px 26px -12px rgba(0, 0, 0, 0.85),
-			inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 3px;
-	}
-
-	.fan-rank {
-		font-size: 0.95rem;
-		font-weight: 700;
-		line-height: 1;
-		color: #23301f;
-	}
-
-	.fan-suit {
-		font-size: 1.8rem;
-		line-height: 1;
-		color: #b03a2e;
-	}
-
-	/* — Controls — */
-	.field-label {
-		font-size: 0.68rem;
-		font-weight: 600;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: rgba(246, 239, 224, 0.6);
-	}
-
 	.segmented {
 		display: flex;
 		gap: 0.4rem;
@@ -276,19 +546,17 @@
 		cursor: pointer;
 		transition:
 			background-color 0.15s ease,
-			color 0.15s ease,
-			transform 0.15s ease;
+			color 0.15s ease;
 	}
 
 	.seg-item:hover {
-		background-color: rgba(255, 255, 255, 0.06);
+		background: rgba(255, 255, 255, 0.06);
 		color: #f8f1e0;
 	}
 
 	.seg-item[aria-pressed='true'] {
 		background-image: linear-gradient(180deg, #f3dda0, #cfa84f);
 		color: #241704;
-		box-shadow: 0 6px 14px -8px rgba(0, 0, 0, 0.9);
 	}
 
 	.seg-item:focus-visible {
@@ -308,18 +576,13 @@
 		cursor: pointer;
 		transition:
 			filter 0.15s ease,
-			transform 0.15s ease,
-			background-color 0.15s ease,
-			border-color 0.15s ease;
+			transform 0.15s ease;
 	}
 
 	.btn-gold {
 		border: 1px solid rgba(255, 244, 214, 0.55);
 		background-image: linear-gradient(180deg, #f6e3ad 0%, #d9b25c 58%, #b98f33 100%);
 		color: #241704;
-		box-shadow:
-			0 12px 24px -14px rgba(0, 0, 0, 0.95),
-			inset 0 1px 0 rgba(255, 255, 255, 0.55);
 	}
 
 	.btn-gold:hover {
@@ -335,51 +598,10 @@
 
 	.btn-quiet:hover {
 		border-color: rgba(232, 197, 106, 0.6);
-		background-color: rgba(255, 255, 255, 0.1);
 	}
 
 	.btn:focus-visible {
 		outline: 2px solid rgba(243, 221, 160, 0.9);
 		outline-offset: 2px;
-	}
-
-	/* — Motion, opt-in only — */
-	@media (prefers-reduced-motion: no-preference) {
-		.scene-glow {
-			animation: breathe 7s ease-in-out infinite;
-		}
-
-		.fan-card {
-			animation: settle 0.7s cubic-bezier(0.2, 0.8, 0.25, 1) backwards;
-		}
-
-		.fan-card:nth-child(2) {
-			animation-delay: 0.08s;
-		}
-
-		.fan-card:nth-child(3) {
-			animation-delay: 0.16s;
-		}
-	}
-
-	@keyframes settle {
-		from {
-			transform: translateX(var(--x)) translateY(calc(var(--y) - 14px)) rotate(var(--r)) scale(0.9);
-			opacity: 0;
-		}
-		to {
-			transform: translateX(var(--x)) translateY(var(--y)) rotate(var(--r)) scale(1);
-			opacity: 1;
-		}
-	}
-
-	@keyframes breathe {
-		0%,
-		100% {
-			opacity: 0.75;
-		}
-		50% {
-			opacity: 1;
-		}
 	}
 </style>

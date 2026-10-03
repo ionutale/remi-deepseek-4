@@ -11,6 +11,9 @@
 		peTablaProgress?: number | null;
 	};
 
+	/** A table joker the current rack selection can legally replace. */
+	export type SwapTarget = { meldId: string; jokerPieceId: string };
+
 	let {
 		title = 'Remi Etalat',
 		notice = '',
@@ -27,6 +30,9 @@
 		mustUsePieceIds = [],
 		turnStartedAt,
 		turnTimeoutMs,
+		lipiCandidateMeldIds = [],
+		swapTargets = [],
+		showBreakSir = false,
 		onselectpiece,
 		ondrawstock,
 		ontakelast,
@@ -34,6 +40,8 @@
 		ondiscard,
 		onmeld,
 		onlipi,
+		onswapjoker,
+		onbreaksir,
 		onclose,
 		onpeTabla,
 		onstrica
@@ -53,6 +61,12 @@
 		mustUsePieceIds?: string[];
 		turnStartedAt?: number;
 		turnTimeoutMs?: number;
+		/** Melds the selected rack piece can legally extend — highlighted as lipi targets. */
+		lipiCandidateMeldIds?: string[];
+		/** Melds holding a joker the selected rack piece can replace. */
+		swapTargets?: SwapTarget[];
+		/** Renders every non-dead șir piece as a clickable "rupe șirul" target. */
+		showBreakSir?: boolean;
 		onselectpiece?: (id: string) => void;
 		ondrawstock?: () => void;
 		ontakelast?: () => void;
@@ -60,6 +74,8 @@
 		ondiscard?: (id: string) => void;
 		onmeld?: () => void;
 		onlipi?: (meldId: string) => void;
+		onswapjoker?: (meldId: string, jokerPieceId: string) => void;
+		onbreaksir?: (pieceId: string) => void;
 		onclose?: () => void;
 		onpeTabla?: () => void;
 		onstrica?: () => void;
@@ -86,6 +102,8 @@
 	let mustUse = $derived((mustUsePieceIds ?? []).length > 0);
 	let lastSir = $derived(sir.length > 0 ? sir[sir.length - 1] : null);
 	let deadSir = $derived(sir.length > 0 ? sir[0] : null);
+	/** Every șir piece except the dead first one, in laying order. */
+	let breakableSir = $derived(showBreakSir && onbreaksir ? sir.slice(1) : []);
 
 	const OWNER_NAMES = ['A', 'B', 'C', 'D'];
 	function ownerTagOf(meld: Formation, i: number): string | null {
@@ -131,7 +149,7 @@
 
 	<!-- Opponents -->
 	<section class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Adversari">
-		{#each opponents as opp}
+		{#each opponents as opp (opp.name)}
 			<div
 				class="glass-panel rounded-xl px-3 py-2 {opp.isActive ? 'seat-active-pulse' : ''}"
 				class:ring-2={opp.isActive}
@@ -174,8 +192,12 @@
 			{:else}
 				<ul class="mb-3 space-y-2">
 					{#each melds as meld (meld.id)}
-						<li class="rounded-xl bg-black/30 px-2.5 py-2">
-							<div class="mb-1.5 flex items-center gap-2">
+						<li
+							class="rounded-xl bg-black/30 px-2.5 py-2 {lipiCandidateMeldIds.includes(meld.id)
+								? 'ring-2 ring-emerald-400'
+								: ''}"
+						>
+							<div class="mb-1.5 flex flex-wrap items-center gap-2">
 								<span
 									class="rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-cream-100/80 uppercase"
 								>
@@ -191,6 +213,18 @@
 										Lipește
 									</button>
 								{/if}
+								{#each swapTargets.filter((target) => target.meldId === meld.id) as target (target.jokerPieceId)}
+									{#if onswapjoker}
+										<button
+											type="button"
+											class="rounded bg-amber-500/25 px-2 py-0.5 text-[11px] font-bold text-amber-100 hover:bg-amber-500/40 disabled:opacity-40"
+											onclick={() => onswapjoker(target.meldId, target.jokerPieceId)}
+											disabled={!isMyTurn}
+										>
+											Înlocuiește jokerul
+										</button>
+									{/if}
+								{/each}
 							</div>
 							<div class="flex flex-wrap gap-1">
 								{#each meld.pieces as piece, i (piece.id + '-' + i)}
@@ -265,6 +299,31 @@
 							{:else if lastSir && sir.length === 1}
 								<span class="text-[10px] text-cream-100/50 italic">(doar piesa moartă)</span>
 							{/if}
+						</div>
+					{/if}
+
+					{#if breakableSir.length > 0}
+						<div
+							class="mt-2 rounded-lg bg-black/20 p-2"
+							role="group"
+							aria-label="Alege piesa din șir pe care o rupi"
+						>
+							<p class="mb-1 text-[10px] font-bold tracking-wider text-amber-200/90 uppercase">
+								Rupe șirul — alege piesa
+							</p>
+							<div class="flex flex-wrap gap-1">
+								{#each breakableSir as piece (piece.id)}
+									<button
+										type="button"
+										class="rounded ring-1 ring-amber-300/50 hover:ring-amber-300 disabled:opacity-40"
+										onclick={() => onbreaksir?.(piece.id)}
+										disabled={!isMyTurn}
+										title="Rupe șirul aici"
+									>
+										<PieceTile {piece} size="sm" />
+									</button>
+								{/each}
+							</div>
 						</div>
 					{/if}
 				</div>

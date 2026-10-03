@@ -26,7 +26,15 @@ import {
 	takeLastFromSir as takeLastPiece,
 	TABLE_REASON
 } from './table';
-import type { Formation, FormationType, GameState, PatternType, Piece, PlayerState } from './types';
+import type {
+	EndReason,
+	Formation,
+	FormationType,
+	GameState,
+	PatternType,
+	Piece,
+	PlayerState
+} from './types';
 
 /** Exact, stable reason strings. The UI maps these to the Romanian copy deck (spec §4). */
 export const REASON = {
@@ -141,7 +149,10 @@ export function createGame(config: { playerCount: 2 | 3 | 4; deck?: Piece[] }): 
 		sessionTotals: racks.map(() => 0),
 		gameWinner: null,
 		turnStartedAt: 0,
-		revision: 1
+		revision: 1,
+		endReason: null,
+		closerIndex: null,
+		lastBreakdowns: undefined
 	};
 }
 
@@ -651,11 +662,14 @@ export function swapJoker(
  * Discards, closing, end of game
  * ------------------------------------------------------------------ */
 
-function finalize(state: GameState, closerIdx: number | null): GameState {
-	const { scores } = scoreGame(state, closerIdx);
+function finalize(state: GameState, closerIdx: number | null, reason: EndReason): GameState {
+	const { scores, breakdowns } = scoreGame(state, closerIdx);
 	return bump(state, {
 		phase: 'finished',
 		scores,
+		lastBreakdowns: breakdowns,
+		endReason: reason,
+		closerIndex: closerIdx,
 		gameWinner: pickWinner(scores),
 		sessionTotals: state.sessionTotals.map((total, i) => total + (scores[i] ?? 0))
 	});
@@ -714,7 +728,7 @@ export function peTablaClose(state: GameState, playerIdx: number, pieceId: strin
 	const pattern = player.peTabla.pattern;
 	const completes = validatePattern(pattern, player.rack).valid;
 	if (completes)
-		return finalize(bump(state, { players: withComplete(playerIdx, state) }), playerIdx);
+		return finalize(bump(state, { players: withComplete(playerIdx, state) }), playerIdx, 'close');
 
 	// One piece outside the pattern is discarded as the closing piece.
 	const discarded = findPiece(player.rack, pieceId);
@@ -734,7 +748,8 @@ export function peTablaClose(state: GameState, playerIdx: number, pieceId: strin
 			players,
 			table: { ...state.table, sir: appendToSir(state.table.sir, discarded) }
 		}),
-		playerIdx
+		playerIdx,
+		'close'
 	);
 }
 
@@ -768,14 +783,15 @@ export function close(state: GameState, pieceId: string): GameState {
 			players,
 			table: { ...state.table, sir: appendToSir(state.table.sir, piece) }
 		}),
-		index
+		index,
+		'close'
 	);
 }
 
 /** The stock ran out: nobody gets the closing bonus (spec §1.8). */
 export function endByStockOut(state: GameState): GameState {
 	requirePlaying(state);
-	return finalize(state, null);
+	return finalize(state, null, 'stock-out');
 }
 
 /** Re-exported so callers can copy a state before experimenting with it. */

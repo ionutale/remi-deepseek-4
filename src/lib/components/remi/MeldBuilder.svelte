@@ -3,23 +3,37 @@
 	import { analyzeFormation, canOpen } from '$lib/engine/remi/formations';
 	import PieceTile from './Piece.svelte';
 
+	/** A formation staged for the current turn — piece ids, resolved by the caller. */
+	export type PendingFormation = { type: FormationType; pieceIds: string[] };
+
 	let {
 		pieces,
 		selectedIds,
 		onselect,
 		onconfirm,
 		oncancel,
-		isFirstMeld
+		isFirstMeld,
+		pendingMelds = [],
+		onaddformation,
+		onremovemeld
 	}: {
 		pieces: Piece[];
 		selectedIds: string[];
 		onselect: (id: string) => void;
-		onconfirm: () => void;
+		onconfirm: (melds?: PendingFormation[]) => void;
 		oncancel: () => void;
 		isFirstMeld: boolean;
+		/** Formations already staged this turn; the caller owns the list. */
+		pendingMelds?: PendingFormation[];
+		/** Provided to switch the builder into multi-formation mode (add one at a time). */
+		onaddformation?: (formation: PendingFormation) => void;
+		onremovemeld?: (index: number) => void;
 	} = $props();
 
-	const selected = $derived(pieces.filter((p) => selectedIds.includes(p.id)));
+	/** Multi-formation mode is on as soon as the caller can accept staged formations. */
+	let staged = $derived(onaddformation !== undefined);
+
+	let selected = $derived(pieces.filter((p) => selectedIds.includes(p.id)));
 
 	function detectType(ps: Piece[]): FormationType {
 		if (ps.length === 0) return 'suite';
@@ -38,10 +52,60 @@
 			? { valid: false as boolean, points: 0, reason: undefined as string | undefined }
 			: analyzeFormation(type, selected)
 	);
-	let first = $derived(
-		isFirstMeld && selected.length > 0 ? canOpen([{ type, pieces: selected }]) : null
+
+	/** Ids already locked into a staged formation — they cannot be picked again. */
+	let stagedIds = $derived(new Set(pendingMelds.flatMap((formation) => formation.pieceIds)));
+	let available = $derived(staged ? pieces.filter((p) => !stagedIds.has(p.id)) : pieces);
+
+	let candidate = $derived<PendingFormation | null>(
+		selected.length === 0 ? null : { type, pieceIds: selected.map((piece) => piece.id) }
 	);
-	let progress = $derived(Math.min(45, first?.points ?? analysis.points));
+
+	/** Staged formations plus the candidate, resolved back into pieces. */
+	let allForms = $derived.by((): { type: FormationType; pieces: Piece[] }[] => {
+		return [
+			...pendingMelds.map(resolveFormation),
+			...(candidate ? [resolveFormation(candidate)] : [])
+		];
+	});
+
+	function resolveFormation(formation: PendingFormation): { type: FormationType; pieces: Piece[] } {
+		return {
+			type: formation.type,
+			pieces: formation.pieceIds.flatMap((id) => {
+				const piece = pieces.find((candidatePiece) => candidatePiece.id === id);
+				return piece ? [piece] : [];
+			})
+		};
+	}
+
+	// The first-meld rule (45 points + a suită) is checked across the WHOLE turn,
+	// not one formation at a time.
+	let first = $derived(isFirstMeld && allForms.length > 0 ? canOpen(allForms) : null);
+	let points = $derived(
+		allForms.reduce(
+			(sum, formation) => sum + analyzeFormation(formation.type, formation.pieces).points,
+			0
+		)
+	);
+	let progress = $derived(Math.min(45, first?.points ?? points));
+
+	/** What a final confirm would meld: staged formations plus the valid candidate. */
+	let confirmForms = $derived(
+		selected.length > 0 && !analysis.valid
+			? pendingMelds
+			: [...pendingMelds, ...(candidate ? [candidate] : [])]
+	);
+	let canConfirm = $derived(
+		confirmForms.length > 0 &&
+			(selected.length === 0 || analysis.valid) &&
+			(!isFirstMeld || (first?.ok ?? false))
+	);
+
+	function pointsOf(formation: PendingFormation): number {
+		const resolved = resolveFormation(formation);
+		return analyzeFormation(resolved.type, resolved.pieces).points;
+	}
 </script>
 
 <section class="glass-panel rounded-2xl p-4" aria-label="Construiește formația">
@@ -76,7 +140,7 @@
 				</div>
 				<span class="text-xs font-bold tabular-nums">{progress}/45</span>
 			</div>
-			{#if first && !first.ok && selected.length > 0}
+			{#if first && !first.ok && (selected.length > 0 || (staged && pendingMelds.length > 0))}
 				<p class="mt-1 text-xs text-gold-300/90">
 					{first.reason === 'first meld needs at least one suite'
 						? 'Îți lipsește o suită în prima etalare.'
@@ -122,8 +186,15 @@
 		<span class="text-xs text-cream-100/70">{analysis.points} puncte</span>
 	</div>
 
+	{#if stagedIds.size > 0}
+		<p class="mb-1 text-[11px] text-cream-100/60">
+			{stagedIds.size}
+			{stagedIds.size === 1 ? 'piesă este deja inclusă' : 'piese sunt deja incluse'} în formațiile pregătite.
+		</p>
+	{/if}
+
 	<div class="mb-3 flex flex-wrap gap-1.5" aria-label="Piese disponibile">
-		{#each pieces as piece (piece.id)}
+		{#each available as piece (piece.id)}
 			<PieceTile
 				{piece}
 				size="sm"
@@ -132,6 +203,39 @@
 			/>
 		{/each}
 	</div>
+
+	{#if pendingMelds.length > 0}
+		<ul class="mb-3 space-y-1.5" aria-label="Formații pregătite">
+			{#each pendingMelds as formation, index (formation.pieceIds.join())}
+				<li class="flex flex-wrap items-center gap-1.5 rounded-xl bg-emerald-500/10 px-2 py-1.5">
+					<span
+						class="rounded bg-black/40 px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+					>
+						{formation.type === 'suite' ? 'Suită' : 'Terță'}
+					</span>
+					{#each formation.pieceIds as pieceId (pieceId)}
+						{@const piece = pieces.find((candidate) => candidate.id === pieceId)}
+						{#if piece}
+							<PieceTile {piece} size="sm" />
+						{/if}
+					{/each}
+					<span class="text-[11px] text-cream-100/70">{pointsOf(formation)} puncte</span>
+					{#if onremovemeld}
+						<button
+							type="button"
+							class="btn ml-auto text-rose-100 btn-ghost btn-xs hover:bg-rose-500/20"
+							onclick={() => onremovemeld?.(index)}
+						>
+							Elimină
+						</button>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+		<p class="mb-2 text-xs font-bold text-cream-100">
+			Total formații pregătite: {pendingMelds.length} · {points} puncte
+		</p>
+	{/if}
 
 	{#if selected.length > 0}
 		<div class="mb-3 flex flex-wrap items-center gap-1.5" aria-label="Formație candidată">
@@ -142,17 +246,39 @@
 		</div>
 	{/if}
 
-	<div class="flex gap-2">
-		<button
-			type="button"
-			class="btn flex-1 border-gold-400 bg-gold-400 font-bold text-felt-950 btn-sm hover:bg-gold-300 disabled:opacity-40"
-			onclick={onconfirm}
-			disabled={!analysis.valid || (isFirstMeld && !(first?.ok ?? false))}
-		>
-			Etalează
-		</button>
+	<div class="flex flex-wrap gap-2">
+		{#if staged && candidate}
+			<button
+				type="button"
+				class="btn flex-1 border-gold-400 bg-gold-400 font-bold text-felt-950 btn-sm hover:bg-gold-300 disabled:opacity-40"
+				onclick={() => candidate && onaddformation?.(candidate)}
+				disabled={!analysis.valid}
+			>
+				Adaugă formația
+			</button>
+		{/if}
+		{#if staged && pendingMelds.length > 0}
+			<button
+				type="button"
+				class="btn flex-1 border-emerald-300/60 font-bold text-emerald-100 btn-outline btn-sm hover:bg-emerald-400/20 disabled:opacity-40"
+				onclick={() => onconfirm(confirmForms)}
+				disabled={!canConfirm}
+			>
+				Etalează {pendingMelds.length}
+				{pendingMelds.length === 1 ? 'formație' : 'formații'}
+			</button>
+		{:else if !staged}
+			<button
+				type="button"
+				class="btn flex-1 border-gold-400 bg-gold-400 font-bold text-felt-950 btn-sm hover:bg-gold-300 disabled:opacity-40"
+				onclick={() => onconfirm()}
+				disabled={!analysis.valid || (isFirstMeld && !(first?.ok ?? false))}
+			>
+				Etalează
+			</button>
+		{/if}
 		<button type="button" class="btn text-cream-100 btn-ghost btn-sm" onclick={oncancel}>
-			Anulează
+			{staged ? 'Închide' : 'Anulează'}
 		</button>
 	</div>
 </section>

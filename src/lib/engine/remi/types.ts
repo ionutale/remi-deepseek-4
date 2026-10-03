@@ -6,6 +6,8 @@
  * engine imports the old one.
  */
 
+import type { PlayerBreakdown } from './scoring';
+
 export type Color = 'red' | 'yellow' | 'blue' | 'black';
 
 export type Piece = {
@@ -84,4 +86,13 @@ export type GameState = {
 	gameWinner: number | null;
 	turnStartedAt: number;
 	revision: number;
+
+	/** Why the game ended — populated by `close` / `peTablaClose` / `endByStockOut`. */
+	endReason?: EndReason | null;
+	/** The player who discarded the closing piece; null when the stock ran out. */
+	closerIndex?: number | null;
+	/** Per-player scoring detail, so the end sheet does not have to recompute it. */
+	lastBreakdowns?: PlayerBreakdown[];
 };
+
+export type EndReason = 'close' | 'stock-out';

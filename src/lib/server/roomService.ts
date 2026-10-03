@@ -1,10 +1,10 @@
 import { nanoid } from 'nanoid';
-import type { GameState, GameConfig } from '$lib/engine/types';
-import { initMatch, isRoundBlocked, voidRound } from '$lib/engine/game';
-import { isTurnExpired } from '$lib/engine/liveness';
-import { aiTurn } from '$lib/engine/ai';
+import type { GameState } from '$lib/engine/remi/types';
+import { createGame, endByStockOut } from '$lib/engine/remi/actions';
+import { playTurn } from '$lib/engine/remi/ai';
 import { roomsCol } from './db';
 import { verifySession } from './auth';
+import { recordResult } from './mmr';
 
 export interface Room {
 	code: string;
@@ -24,7 +24,7 @@ export interface PlayerInRoom {
 
 /**
  * Browse-list projection: lobby metadata only, NEVER `gameState` (opponent
- * hands would otherwise leak to anyone listing rooms).
+ * racks would otherwise leak to anyone listing rooms).
  */
 export interface RoomSummary {
 	code: string;
@@ -54,12 +54,12 @@ export async function createRoom(
 		createdAt: Date.now(),
 		ownerId: id
 	};
-	await col().insertOne(room as any);
+	await col().insertOne(room);
 	return room;
 }
 
 export async function getRoom(code: string): Promise<Room | undefined> {
-	const room = await col().findOne({ code: code.toUpperCase() } as any);
+	const room = await col().findOne({ code: code.toUpperCase() });
 	return room ?? undefined;
 }
 
@@ -68,86 +68,141 @@ export async function joinRoom(
 	playerName: string
 ): Promise<{ room: Room; playerId: string } | { error: string }> {
 	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode } as any);
+	const room = await col().findOne({ code: roomCode });
 	if (!room) return { error: 'Room not found' };
 	if (room.status !== 'waiting') return { error: 'Game already started' };
 	if (room.players.length >= room.maxPlayers) return { error: 'Room is full' };
 	const playerId = nanoid(10);
 	await col().updateOne(
-		{ code: roomCode } as any,
-		{ $push: { players: { id: playerId, name: playerName, lastSeen: Date.now() } } } as any
+		{ code: roomCode },
+		{ $push: { players: { id: playerId, name: playerName, lastSeen: Date.now() } } }
 	);
-	const updated = await col().findOne({ code: roomCode } as any);
+	const updated = await col().findOne({ code: roomCode });
 	return { room: updated!, playerId };
 }
 
 export async function startGame(code: string, playerId: string): Promise<{ error?: string }> {
 	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode } as any);
+	const room = await col().findOne({ code: roomCode });
 	if (!room) return { error: 'Room not found' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can start' };
 	if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-	const config: GameConfig = {
-		playerCount: room.players.length as 2 | 3 | 4,
-		humanPlayerIndex: 0
-	};
-	await col().updateOne(
-		{ code: roomCode } as any,
-		{ $set: { gameState: initMatch(config), status: 'playing' } } as any
-	);
+	const next = createGame({ playerCount: room.players.length as 2 | 3 | 4 });
+	next.turnStartedAt = Date.now();
+	await col().updateOne({ code: roomCode }, { $set: { gameState: next, status: 'playing' } });
 	return {};
+}
+
+/**
+ * Deals the game after `prev` finished: same seats, `sessionTotals` carried
+ * over, and the previous winner opens the new game. Fresh `revision`, so the
+ * per-game MMR idempotency guard never confuses it with the previous game.
+ */
+export function createNextGame(prev: GameState): GameState {
+	const next = createGame({ playerCount: prev.players.length as 2 | 3 | 4 });
+	next.sessionTotals = [...prev.sessionTotals];
+	next.firstPlayerIndex = prev.gameWinner ?? 0;
+	next.currentPlayerIndex = next.firstPlayerIndex;
+	next.turnStartedAt = Date.now();
+	return next;
 }
 
 export async function restartGame(code: string, playerId: string): Promise<{ error?: string }> {
 	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode } as any);
+	const room = await col().findOne({ code: roomCode });
 	if (!room) return { error: 'Room not found' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can restart' };
 	if (room.status !== 'finished') return { error: 'Game not finished' };
+	if (!room.gameState || (room.gameState as GameState).schemaVersion !== 3) {
+		return { error: 'No finished game to continue' };
+	}
 
-	const config: GameConfig = {
-		playerCount: room.players.length as 2 | 3 | 4,
-		humanPlayerIndex: 0
-	};
 	await col().updateOne(
-		{ code: roomCode } as any,
-		{ $set: { gameState: initMatch(config), status: 'playing' } } as any
+		{ code: roomCode },
+		{ $set: { gameState: createNextGame(room.gameState), status: 'playing' } }
 	);
 	return {};
 }
 
 export function statusForGameState(state: GameState): 'playing' | 'finished' {
-	// Room stays 'playing' through 'round-over'; 'finished' only at match end.
 	return state.phase === 'finished' ? 'finished' : 'playing';
 }
 
 export async function saveGameState(code: string, state: GameState): Promise<void> {
 	await col().updateOne(
-		{ code: code.toUpperCase() } as any,
-		{ $set: { gameState: state, status: statusForGameState(state) } } as any
+		{ code: code.toUpperCase() },
+		{ $set: { gameState: state, status: statusForGameState(state) } }
 	);
+	if (state.phase === 'finished') {
+		try {
+			await maybeRecordMmr(code, state);
+		} catch (err) {
+			console.error(`Room ${code}: MMR auto-record failed`, err);
+		}
+	}
 }
 
 export async function resetStaleGameState(code: string): Promise<void> {
 	await col().updateOne(
-		{ code: code.toUpperCase() } as any,
-		{ $set: { gameState: null, status: 'waiting' } } as any
+		{ code: code.toUpperCase() },
+		{ $set: { gameState: null, status: 'waiting' } }
 	);
 }
 
 export async function updateGameState(code: string, state: GameState): Promise<{ error?: string }> {
 	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode } as any);
+	const room = await col().findOne({ code: roomCode });
 	if (!room) return { error: 'Room not found' };
 
-	// MMR is recorded only by /api/matchmaking/result at match end (matchWinner,
-	// 1v1 only) — never here, so results cannot be recorded twice.
-	await col().updateOne(
-		{ code: roomCode } as any,
-		{ $set: { gameState: state, status: statusForGameState(state) } } as any
-	);
+	await saveGameState(roomCode, state);
 	return {};
+}
+
+/* ------------------------------------------------------------------ *
+ * MMR — recorded once per finished game (1v1 only), keyed per game.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Idempotency guard keyed per finished game: `roomCode + revision + winner +
+ * scores`. A fresh `next-game` restarts at revision 1 but finishes with a
+ * different revision/scores key, so no explicit reset is needed.
+ */
+const mmrRecordedKeys = new Map<string, number>();
+const MMR_KEY_TTL_MS = 2 * 60 * 60 * 1000;
+
+function mmrKeyFor(code: string, state: GameState): string {
+	return `${code.toUpperCase()}#${state.revision}:${state.gameWinner}:${state.scores.join(',')}`;
+}
+
+/**
+ * Records the 1v1 MMR result for a finished game. Returns `'recorded'` when
+ * this call recorded it, `'already'` when it was recorded before, and
+ * `'skipped'` when the game is not MMR-eligible (unfinished, no winner, or not
+ * 1v1). Shared by the auto-record path (`saveGameState`) and the explicit
+ * `/api/matchmaking/result` endpoint, so a game can never count twice.
+ */
+export async function maybeRecordMmr(
+	code: string,
+	state: GameState
+): Promise<'recorded' | 'already' | 'skipped'> {
+	if (state.phase !== 'finished') return 'skipped';
+	if (state.gameWinner === null || state.gameWinner === undefined) return 'skipped';
+	const room = await getRoom(code);
+	if (!room || room.players.length !== 2) return 'skipped';
+	const winner = room.players[state.gameWinner];
+	const loser = room.players[state.gameWinner === 0 ? 1 : 0];
+	if (!winner || !loser) return 'skipped';
+
+	const key = mmrKeyFor(code, state);
+	const now = Date.now();
+	for (const [k, ts] of mmrRecordedKeys) {
+		if (now - ts > MMR_KEY_TTL_MS) mmrRecordedKeys.delete(k);
+	}
+	if (mmrRecordedKeys.has(key)) return 'already';
+	await recordResult(winner.id, loser.id);
+	mmrRecordedKeys.set(key, now);
+	return 'recorded';
 }
 
 export async function closeRoom(
@@ -161,14 +216,12 @@ export async function closeRoom(
 	const authed = await verifySession(playerId, sessionToken);
 	if (!authed) return { error: 'Unauthorized' };
 	if (room.ownerId !== playerId) return { error: 'Only owner can close' };
-	await col().deleteOne({ code: roomCode } as any);
+	await col().deleteOne({ code: roomCode });
 	return {};
 }
 
 export async function getAllRooms(): Promise<RoomSummary[]> {
-	const rooms = await col()
-		.find({} as any)
-		.toArray();
+	const rooms = await col().find({}).toArray();
 	return rooms.map((room) => ({
 		code: room.code,
 		status: room.status,
@@ -186,38 +239,30 @@ const STALE_TIMEOUT_MS = 30_000;
 
 export async function pingPlayer(code: string, playerId: string): Promise<void> {
 	await col().updateOne(
-		{ code: code.toUpperCase(), 'players.id': playerId } as any,
-		{ $set: { 'players.$.lastSeen': Date.now() } } as any
+		{ code: code.toUpperCase(), 'players.id': playerId },
+		{ $set: { 'players.$.lastSeen': Date.now() } }
 	);
 }
 
 export async function cleanStalePlayers(): Promise<void> {
 	const now = Date.now();
 	const cutoff = now - STALE_TIMEOUT_MS;
-	const waitingRooms = await col()
-		.find({ status: 'waiting' } as any)
-		.toArray();
+	const waitingRooms = await col().find({ status: 'waiting' }).toArray();
 
 	for (const room of waitingRooms) {
 		const before = room.players.length;
 		const activePlayers = room.players.filter((p: PlayerInRoom) => p.lastSeen >= cutoff);
 
 		if (activePlayers.length === 0) {
-			await col().deleteOne({ code: room.code } as any);
+			await col().deleteOne({ code: room.code });
 		} else if (activePlayers.length < before) {
-			await col().updateOne(
-				{ code: room.code } as any,
-				{ $set: { players: activePlayers } } as any
-			);
+			await col().updateOne({ code: room.code }, { $set: { players: activePlayers } });
 			if (!activePlayers.some((p: PlayerInRoom) => p.id === room.ownerId)) {
 				const newOwner = activePlayers[0];
 				console.warn(
 					`Room ${room.code}: stale owner removed, ownership transferred to ${newOwner.name} (${newOwner.id})`
 				);
-				await col().updateOne(
-					{ code: room.code } as any,
-					{ $set: { ownerId: newOwner.id } } as any
-				);
+				await col().updateOne({ code: room.code }, { $set: { ownerId: newOwner.id } });
 			}
 		}
 	}
@@ -229,19 +274,31 @@ export const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? 120_000);
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function autoPlayExpiredTurns(now = Date.now()): Promise<void> {
-	const rooms = await col()
-		.find({ status: 'playing' } as any)
-		.toArray();
+	const rooms = await col().find({ status: 'playing' }).toArray();
 
 	for (const room of rooms) {
 		const gs = room.gameState as GameState | null;
-		if (!gs || (gs as GameState).schemaVersion !== 2) continue;
+		if (!gs || (gs as GameState).schemaVersion !== 3) continue;
+		if (gs.phase !== 'playing') continue;
+		if (now - gs.turnStartedAt <= TURN_TIMEOUT_MS) continue;
 		try {
-			if (isRoundBlocked(gs)) {
-				await saveGameState(room.code, voidRound(gs));
-			} else if (isTurnExpired(gs, now, TURN_TIMEOUT_MS)) {
-				await saveGameState(room.code, aiTurn(gs));
+			let next: GameState;
+			try {
+				next = playTurn(gs);
+			} catch {
+				// `playTurn` may throw on an empty stock — the stock-out rule
+				// decides those games (spec §1.8), not the AI.
+				next = endByStockOut(gs);
 			}
+			if (next.revision === gs.revision) {
+				// No progress (e.g. the safe fallback with an empty stock).
+				if (gs.table.stock.length === 0) {
+					next = endByStockOut(gs);
+				} else {
+					continue;
+				}
+			}
+			await saveGameState(room.code, next);
 		} catch (err) {
 			console.error(`Room ${room.code}: auto-play failed`, err);
 		}
