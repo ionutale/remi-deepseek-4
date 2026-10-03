@@ -12,11 +12,16 @@ export interface Card {
 	jokerType?: JokerType;
 }
 
-export type MeldType = 'set' | 'sequence' | 'joker-meld';
+export type MeldType = 'set' | 'sequence';
 
 export interface Meld {
 	cards: Card[];
 	type: MeldType;
+}
+
+export interface CloseDeclaration {
+	melds: Meld[];
+	discardId: string;
 }
 
 export interface PlayerState {
@@ -24,19 +29,27 @@ export interface PlayerState {
 	melds: Meld[];
 }
 
-export type GamePhase = 'idle' | 'draw' | 'discard' | 'finished';
+export type GamePhase = 'draw' | 'discard' | 'round-over' | 'finished';
 
 export interface GameState {
+	schemaVersion: 2;
 	players: PlayerState[];
 	currentPlayerIndex: number;
 	drawPile: Card[];
 	discardPile: Card[];
 	phase: GamePhase;
-	winner: number | null;
+	round: number;
+	roundStarter: number;
+	scores: number[];
+	roundWinner: number | null;
+	matchWinner: number | null;
+	targetScore: number;
 	turnStartedAt: number;
+	revision: number;
 }
 
 export interface GameConfig {
 	playerCount: 2 | 3 | 4;
 	humanPlayerIndex: number;
+	targetScore?: number;
 }

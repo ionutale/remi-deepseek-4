@@ -1,6 +1,13 @@
 import { writable, derived } from 'svelte/store';
-import type { GameState, GameConfig } from '$lib/engine/types';
-import { initGame, drawFromPile, drawFromDiscard, discardCard, closeGame } from '$lib/engine/game';
+import type { GameState, GameConfig, CloseDeclaration } from '$lib/engine/types';
+import {
+	initMatch,
+	drawFromPile,
+	drawFromDiscard,
+	discardCard,
+	closeGame,
+	nextRound
+} from '$lib/engine/game';
 import { aiTurn } from '$lib/engine/ai';
 
 export const gameState = writable<GameState | null>(null);
@@ -16,10 +23,10 @@ export const isHumanTurn = derived(
 
 export const gamePhase = derived(gameState, ($state) => $state?.phase ?? 'idle');
 
-export const winner = derived(gameState, ($state) => $state?.winner ?? null);
+export const winner = derived(gameState, ($state) => $state?.matchWinner ?? null);
 
 export function startGame(config: GameConfig) {
-	const state = initGame(config);
+	const state = initMatch(config);
 	gameState.set(state);
 }
 
@@ -62,11 +69,24 @@ export function playerDiscard(cardId: string) {
 	});
 }
 
-export function playerClose() {
+export function playerClose(declaration: CloseDeclaration) {
 	gameState.update((state) => {
 		if (!state) return state;
 		try {
-			return closeGame(state);
+			return closeGame(state, declaration);
+		} catch {
+			return state;
+		}
+	});
+}
+
+export function playerNextRound() {
+	gameState.update((state) => {
+		if (!state) return state;
+		try {
+			let newState = nextRound(state);
+			newState = runAITurns(newState);
+			return newState;
 		} catch {
 			return state;
 		}
@@ -76,7 +96,12 @@ export function playerClose() {
 function runAITurns(state: GameState): GameState {
 	let current = { ...state };
 	let safety = 0;
-	while (current.currentPlayerIndex !== 0 && current.phase !== 'finished' && safety < 20) {
+	while (
+		current.currentPlayerIndex !== 0 &&
+		current.phase !== 'finished' &&
+		current.phase !== 'round-over' &&
+		safety < 20
+	) {
 		current = aiTurn(current);
 		safety++;
 	}

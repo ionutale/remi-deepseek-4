@@ -1,4 +1,4 @@
-import type { Card, Meld } from './types';
+import type { Card, Meld, MeldType } from './types';
 import { combinations } from './utils';
 import { HAND_SIZE } from './deck';
 
@@ -7,7 +7,8 @@ export function isValidSet(cards: Card[]): boolean {
 
 	const nonJokers = cards.filter((c) => !c.isJoker);
 
-	if (nonJokers.length === 0) return false;
+	if (nonJokers.length < 2) return false; // at least 2 natural cards
+	if (cards.length - nonJokers.length > 1) return false; // at most 1 joker
 
 	const value = nonJokers[0].value;
 	const suits = new Set<string>();
@@ -26,7 +27,8 @@ export function isValidSequence(cards: Card[]): boolean {
 
 	const nonJokers = cards.filter((c) => !c.isJoker);
 
-	if (nonJokers.length === 0) return false;
+	if (nonJokers.length < 2) return false; // at least 2 natural cards
+	if (cards.length - nonJokers.length > 1) return false; // at most 1 joker
 
 	const suit = nonJokers[0].suit;
 	const values = new Set<number>();
@@ -43,21 +45,37 @@ export function isValidSequence(cards: Card[]): boolean {
 	return range <= cards.length;
 }
 
+export function validateMeld(cards: Card[]): { valid: boolean; reason?: string; type?: MeldType } {
+	if (cards.length < 3) {
+		return { valid: false, reason: 'at least 3 cards' };
+	}
+
+	const jokerCount = cards.filter((c) => c.isJoker).length;
+	const naturalCount = cards.length - jokerCount;
+	if (naturalCount < 2) {
+		return { valid: false, reason: 'at least 2 natural cards' };
+	}
+	if (jokerCount > 1) {
+		return { valid: false, reason: 'max 1 joker per meld' };
+	}
+
+	if (isValidSet(cards)) {
+		return { valid: true, type: 'set' };
+	}
+	if (isValidSequence(cards)) {
+		return { valid: true, type: 'sequence' };
+	}
+
+	return { valid: false, reason: 'not a set or a sequence' };
+}
+
 export function isValidMeld(cards: Card[]): boolean {
-	if (cards.length === 1 && cards[0].isJoker && cards[0].jokerType === 'colored') return true;
-	return isValidSet(cards) || isValidSequence(cards);
+	return validateMeld(cards).valid;
 }
 
 function findAllMelds(hand: Card[]): Meld[] {
 	const melds: Meld[] = [];
 	const seen = new Set<string>();
-
-	// Colored joker = standalone wild meld (counts as an entire group)
-	for (const card of hand) {
-		if (card.isJoker && card.jokerType === 'colored') {
-			melds.push({ cards: [card], type: 'joker-meld' });
-		}
-	}
 
 	for (let size = 3; size <= hand.length; size++) {
 		for (const combo of combinations(hand, size)) {
@@ -68,10 +86,9 @@ function findAllMelds(hand: Card[]): Meld[] {
 			if (seen.has(key)) continue;
 			seen.add(key);
 
-			if (isValidSet(combo)) {
-				melds.push({ cards: combo, type: 'set' });
-			} else if (isValidSequence(combo)) {
-				melds.push({ cards: combo, type: 'sequence' });
+			const validation = validateMeld(combo);
+			if (validation.valid && validation.type) {
+				melds.push({ cards: combo, type: validation.type });
 			}
 		}
 	}
@@ -158,14 +175,6 @@ export function suggestMelds(hand: Card[]): Card[][] {
 	const groups: Card[][] = [];
 	const used = new Set<string>();
 
-	// Colored jokers are standalone wild melds — show them in their own slot
-	for (const card of hand) {
-		if (card.isJoker && card.jokerType === 'colored') {
-			groups.push([card]);
-			used.add(card.id);
-		}
-	}
-
 	// Step 1 — complete valid melds, greedy largest-first
 	const allValid = findAllMelds(hand);
 	allValid.sort((a, b) => b.cards.length - a.cards.length);
@@ -219,6 +228,69 @@ export function suggestMelds(hand: Card[]): Card[][] {
 	}
 
 	return groups;
+}
+
+export function validateCloseDeclaration(
+	hand: Card[],
+	declaration: { melds: Meld[]; discardId: string }
+): { valid: boolean; reason?: string } {
+	// 1. Hand must have 15 cards
+	if (hand.length !== HAND_SIZE + 1) {
+		return { valid: false, reason: 'hand must have 15 cards' };
+	}
+
+	// 2. discardId must be in hand
+	const discardCard = hand.find((c) => c.id === declaration.discardId);
+	if (!discardCard) {
+		return { valid: false, reason: 'discard card must be in hand' };
+	}
+
+	// 3. Meld cards must equal hand minus discard, exactly once each
+	const handIds = new Set(hand.map((c) => c.id));
+	handIds.delete(declaration.discardId);
+
+	const meldCardIds: string[] = [];
+	for (const meld of declaration.melds) {
+		for (const card of meld.cards) {
+			if (!handIds.has(card.id)) {
+				return { valid: false, reason: 'melds must cover exactly 14 cards, each exactly once' };
+			}
+			meldCardIds.push(card.id);
+		}
+	}
+
+	if (meldCardIds.length !== HAND_SIZE) {
+		return { valid: false, reason: 'melds must cover exactly 14 cards, each exactly once' };
+	}
+
+	const uniqueMeldIds = new Set(meldCardIds);
+	if (uniqueMeldIds.size !== HAND_SIZE) {
+		return { valid: false, reason: 'melds must cover exactly 14 cards, each exactly once' };
+	}
+
+	if (uniqueMeldIds.size !== handIds.size || ![...uniqueMeldIds].every((id) => handIds.has(id))) {
+		return { valid: false, reason: 'melds must cover exactly 14 cards, each exactly once' };
+	}
+
+	// 4. Each meld must be valid AND type must match
+	for (const meld of declaration.melds) {
+		const validation = validateMeld(meld.cards);
+		if (!validation.valid) {
+			return { valid: false, reason: validation.reason };
+		}
+		if (validation.type !== meld.type) {
+			return { valid: false, reason: 'not a set or a sequence' };
+		}
+	}
+
+	// 5. At least one set and at least one sequence
+	const hasSet = declaration.melds.some((m) => m.type === 'set');
+	const hasSequence = declaration.melds.some((m) => m.type === 'sequence');
+	if (!hasSet || !hasSequence) {
+		return { valid: false, reason: 'need at least one set and one sequence' };
+	}
+
+	return { valid: true };
 }
 
 /**

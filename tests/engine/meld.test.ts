@@ -1,10 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { isValidSet, isValidSequence, isValidMeld, canFormValidClose } from '$lib/engine/meld';
-import type { Card, JokerType, Suit, Value } from '$lib/engine/types';
+import {
+	isValidSet,
+	isValidSequence,
+	isValidMeld,
+	validateMeld,
+	validateCloseDeclaration,
+	canFormValidClose
+} from '$lib/engine/meld';
+import type { Card, JokerType, Meld, Suit, Value } from '$lib/engine/types';
 
 let cardId = 0;
 function c(suit: Suit, value: Value, isJoker = false, jokerType?: JokerType): Card {
-	return { suit, value, id: `${suit}-${value}-${cardId++}`, isJoker, jokerType };
+	return { suit, value, id: `t${cardId++}`, isJoker, jokerType };
+}
+function joker(jokerType: JokerType = 'black'): Card {
+	return c(jokerType === 'black' ? '♠' : '♥', 0 as Value, true, jokerType);
 }
 
 describe('isValidSet', () => {
@@ -21,7 +31,15 @@ describe('isValidSet', () => {
 	});
 
 	it('accepts set with joker', () => {
-		expect(isValidSet([c('♠', 5), c('♥', 5), c('♠', 0 as Value, true)])).toBe(true);
+		expect(isValidSet([c('♠', 5), c('♥', 5), joker()])).toBe(true);
+	});
+
+	it('rejects set with more than 1 joker', () => {
+		expect(isValidSet([c('♠', 5), joker(), joker('colored')])).toBe(false);
+	});
+
+	it('rejects set with fewer than 2 naturals', () => {
+		expect(isValidSet([c('♠', 5), joker(), joker('colored')])).toBe(false);
 	});
 
 	it('accepts 4 cards same value all different suits', () => {
@@ -47,15 +65,23 @@ describe('isValidSequence', () => {
 	});
 
 	it('accepts sequence with joker filling a gap', () => {
-		expect(isValidSequence([c('♠', 5), c('♠', 6), c('♠', 0 as Value, true)])).toBe(true);
+		expect(isValidSequence([c('♠', 5), c('♠', 7), joker()])).toBe(true);
 	});
 
 	it('accepts sequence with joker at start', () => {
-		expect(isValidSequence([c('♠', 0 as Value, true), c('♠', 6), c('♠', 7)])).toBe(true);
+		expect(isValidSequence([joker(), c('♠', 6), c('♠', 7)])).toBe(true);
 	});
 
 	it('accepts sequence with joker at end', () => {
-		expect(isValidSequence([c('♠', 5), c('♠', 6), c('♠', 0 as Value, true)])).toBe(true);
+		expect(isValidSequence([c('♠', 5), c('♠', 6), joker()])).toBe(true);
+	});
+
+	it('rejects sequence with more than 1 joker', () => {
+		expect(isValidSequence([c('♠', 5), joker(), joker('colored')])).toBe(false);
+	});
+
+	it('rejects duplicate value in a sequence', () => {
+		expect(isValidSequence([c('♠', 5), c('♠', 5), c('♠', 6)])).toBe(false);
 	});
 
 	it('accepts longer sequence of 4 cards', () => {
@@ -74,6 +100,201 @@ describe('isValidMeld', () => {
 
 	it('rejects invalid cards (neither set nor sequence)', () => {
 		expect(isValidMeld([c('♠', 5), c('♥', 6), c('♦', 7)])).toBe(false);
+	});
+
+	it('rejects a standalone joker (colored or black)', () => {
+		expect(isValidMeld([joker('colored')])).toBe(false);
+		expect(isValidMeld([joker('black')])).toBe(false);
+	});
+});
+
+describe('validateMeld', () => {
+	it('accepts a valid set with type set', () => {
+		const result = validateMeld([c('♠', 5), c('♥', 5), c('♦', 5)]);
+		expect(result).toEqual({ valid: true, type: 'set' });
+	});
+
+	it('accepts a valid sequence with type sequence', () => {
+		const result = validateMeld([c('♠', 5), c('♠', 6), c('♠', 7)]);
+		expect(result).toEqual({ valid: true, type: 'sequence' });
+	});
+
+	it('rejects fewer than 3 cards', () => {
+		expect(validateMeld([c('♠', 5), c('♥', 5)])).toEqual({
+			valid: false,
+			reason: 'at least 3 cards'
+		});
+	});
+
+	it('rejects more than 1 joker', () => {
+		expect(validateMeld([c('♠', 5), c('♥', 5), joker(), joker('colored')])).toEqual({
+			valid: false,
+			reason: 'max 1 joker per meld'
+		});
+	});
+
+	it('rejects fewer than 2 naturals', () => {
+		expect(validateMeld([c('♠', 5), joker(), joker('colored')])).toEqual({
+			valid: false,
+			reason: 'at least 2 natural cards'
+		});
+	});
+
+	it('accepts a gap sequence with exactly 1 joker', () => {
+		const result = validateMeld([c('♠', 5), c('♠', 7), joker()]);
+		expect(result).toEqual({ valid: true, type: 'sequence' });
+	});
+
+	it('rejects a duplicate value in a sequence', () => {
+		expect(validateMeld([c('♠', 5), c('♠', 5), c('♠', 6)])).toEqual({
+			valid: false,
+			reason: 'not a set or a sequence'
+		});
+	});
+
+	it('rejects cards that are neither a set nor a sequence', () => {
+		expect(validateMeld([c('♠', 5), c('♥', 6), c('♦', 7)])).toEqual({
+			valid: false,
+			reason: 'not a set or a sequence'
+		});
+	});
+});
+
+/** 15-card hand: set(5s) + set(7s) + seq(9-11♠) + seq(2-6♣) + J♥ spare. */
+function buildCloseHand(): { hand: Card[]; melds: Meld[]; discardId: string } {
+	const set5 = [c('♠', 5), c('♥', 5), c('♦', 5)];
+	const set7 = [c('♠', 7), c('♥', 7), c('♦', 7)];
+	const seqS = [c('♠', 9), c('♠', 10), c('♠', 11)];
+	const seqC = [c('♣', 2), c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6)];
+	const spare = c('♥', 11);
+	const hand = [...set5, ...set7, ...seqS, ...seqC, spare];
+	const melds: Meld[] = [
+		{ cards: set5, type: 'set' },
+		{ cards: set7, type: 'set' },
+		{ cards: seqS, type: 'sequence' },
+		{ cards: seqC, type: 'sequence' }
+	];
+	return { hand, melds, discardId: spare.id };
+}
+
+describe('validateCloseDeclaration', () => {
+	it('accepts a valid close', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		expect(validateCloseDeclaration(hand, { melds, discardId })).toEqual({ valid: true });
+	});
+
+	it('rejects a discard card not in hand', () => {
+		const { hand, melds } = buildCloseHand();
+		expect(validateCloseDeclaration(hand, { melds, discardId: 'missing-id' })).toEqual({
+			valid: false,
+			reason: 'discard card must be in hand'
+		});
+	});
+
+	it('rejects a meld card not in hand', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		const foreign = c('♦', 13);
+		const tampered: Meld[] = melds.map((m, i) =>
+			i === 0 ? { ...m, cards: [foreign, ...m.cards.slice(1)] } : m
+		);
+		expect(validateCloseDeclaration(hand, { melds: tampered, discardId })).toEqual({
+			valid: false,
+			reason: 'melds must cover exactly 14 cards, each exactly once'
+		});
+	});
+
+	it('rejects a card used in two melds', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		const shared = melds[0].cards[0];
+		const tampered: Meld[] = melds.map((m, i) =>
+			i === 1 ? { ...m, cards: [shared, ...m.cards.slice(1)] } : m
+		);
+		expect(validateCloseDeclaration(hand, { melds: tampered, discardId })).toEqual({
+			valid: false,
+			reason: 'melds must cover exactly 14 cards, each exactly once'
+		});
+	});
+
+	it('rejects only 13 melded cards', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		const short: Meld[] = melds.map((m, i) => (i === 0 ? { ...m, cards: m.cards.slice(1) } : m));
+		expect(validateCloseDeclaration(hand, { melds: short, discardId })).toEqual({
+			valid: false,
+			reason: 'melds must cover exactly 14 cards, each exactly once'
+		});
+	});
+
+	it('rejects an invalid meld', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		// Swap one card between two melds: coverage stays exact, both melds break.
+		const [a, b] = [melds[0].cards[0], melds[2].cards[0]];
+		const broken: Meld[] = [
+			{ cards: [b, ...melds[0].cards.slice(1)], type: 'set' },
+			melds[1],
+			{ cards: [a, ...melds[2].cards.slice(1)], type: 'sequence' },
+			melds[3]
+		];
+		expect(validateCloseDeclaration(hand, { melds: broken, discardId })).toEqual({
+			valid: false,
+			reason: 'not a set or a sequence'
+		});
+	});
+
+	it('rejects a close with no set', () => {
+		const seqA = [c('♠', 5), c('♠', 6), c('♠', 7)];
+		const seqB = [c('♥', 9), c('♥', 10), c('♥', 11)];
+		const seqC = [c('♣', 3), c('♣', 4), c('♣', 5), c('♣', 6)];
+		const seqD = [c('♦', 2), c('♦', 3), c('♦', 4), c('♦', 5)];
+		const spare = c('♣', 13);
+		const hand = [...seqA, ...seqB, ...seqC, ...seqD, spare];
+		const melds: Meld[] = [
+			{ cards: seqA, type: 'sequence' },
+			{ cards: seqB, type: 'sequence' },
+			{ cards: seqC, type: 'sequence' },
+			{ cards: seqD, type: 'sequence' }
+		];
+		expect(validateCloseDeclaration(hand, { melds, discardId: spare.id })).toEqual({
+			valid: false,
+			reason: 'need at least one set and one sequence'
+		});
+	});
+
+	it('rejects a close with no sequence', () => {
+		const setA = [c('♠', 5), c('♥', 5), c('♦', 5)];
+		const setB = [c('♠', 7), c('♥', 7), c('♦', 7)];
+		const setC = [c('♠', 9), c('♥', 9), c('♦', 9), c('♣', 9)];
+		const setD = [c('♠', 3), c('♥', 3), c('♦', 3), c('♣', 3)];
+		const spare = c('♠', 13);
+		const hand = [...setA, ...setB, ...setC, ...setD, spare];
+		const melds: Meld[] = [
+			{ cards: setA, type: 'set' },
+			{ cards: setB, type: 'set' },
+			{ cards: setC, type: 'set' },
+			{ cards: setD, type: 'set' }
+		];
+		expect(validateCloseDeclaration(hand, { melds, discardId: spare.id })).toEqual({
+			valid: false,
+			reason: 'need at least one set and one sequence'
+		});
+	});
+
+	it('rejects a hand that is not 15 cards', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		expect(validateCloseDeclaration(hand.slice(0, 14), { melds, discardId })).toEqual({
+			valid: false,
+			reason: 'hand must have 15 cards'
+		});
+	});
+
+	it('rejects a sequence mislabeled as type set', () => {
+		const { hand, melds, discardId } = buildCloseHand();
+		const relabeled: Meld[] = melds.map((m) =>
+			m.type === 'sequence' ? { ...m, type: 'set' as const } : m
+		);
+		expect(validateCloseDeclaration(hand, { melds: relabeled, discardId })).toEqual({
+			valid: false,
+			reason: 'not a set or a sequence'
+		});
 	});
 });
 
@@ -154,12 +375,12 @@ describe('canFormValidClose', () => {
 			c('♣', 7), // set of 7s (4)
 			c('♠', 9),
 			c('♠', 10),
-			c('♠', 0 as Value, true), // seq 9-10-[11]♠ via joker (3)
+			joker(), // seq 9-10-[11]♠ via joker (3)
 			c('♣', 3),
 			c('♣', 4),
 			c('♣', 5),
 			c('♣', 6), // sequence 3-6♣ (4)
-			c('♠', 0 as Value, true) // spare joker
+			joker('colored') // spare joker
 		];
 		expect(canFormValidClose(hand)).toBe(true);
 	});
@@ -291,17 +512,9 @@ describe('canFormValidClose', () => {
 		expect(canFormValidClose(hand)).toBe(true);
 	});
 
-	it('accepts single colored joker as a valid meld', () => {
-		expect(isValidMeld([c('♥', 0 as Value, true, 'colored')])).toBe(true);
-	});
-
-	it('rejects single black joker as a standalone meld', () => {
-		expect(isValidMeld([c('♠', 0 as Value, true, 'black')])).toBe(false);
-	});
-
-	it('accepts close where colored joker acts as wild meld (3 real melds + joker meld + spare)', () => {
-		// colored joker = wild meld, 3 real melds, 1 spare
-		// real: set(5s ♠♥♦), seq(10-12♠), seq(3-6♣) → need ≥1 set + ≥1 sequence ✓
+	it('rejects a close that would need a standalone joker meld', () => {
+		// 13 natural cards in valid melds + colored joker + spare: the joker
+		// cannot stand alone, and no meld can absorb it without breaking.
 		const hand = [
 			c('♠', 5),
 			c('♥', 5),
@@ -313,37 +526,12 @@ describe('canFormValidClose', () => {
 			c('♣', 4),
 			c('♣', 5),
 			c('♣', 6), // sequence 3-6♣ (4)
-			c('♥', 0 as Value, true, 'colored'), // colored joker = wild meld
-			c('♥', 13), // spare K♥
-			// 3 more cards to fill 15 total — add to one of the melds
 			c('♠', 7),
 			c('♥', 7),
-			c('♦', 7) // set of 7s (3)
+			c('♦', 8), // 7♠,7♥ + 8♦ fit no meld with the joker (needs ≥2 naturals per meld)
+			joker('colored'),
+			c('♥', 13) // spare K♥
 		];
-		// 15 cards: set(3) + seq(3) + seq(4) + set(3) = 13 real + joker + spare = 15
-		// Removing spare: 14 = joker(1) + 3 real melds(13) covering ≥1 set + ≥1 seq ✓
-		expect(canFormValidClose(hand)).toBe(true);
-	});
-
-	it('accepts close with colored joker as wild meld and black joker as wild card', () => {
-		// black joker fills a gap in a sequence; colored joker = entire meld
-		const hand = [
-			c('♠', 5),
-			c('♥', 5),
-			c('♦', 5), // set of 5s (3)
-			c('♠', 9),
-			c('♠', 10),
-			c('♠', 0 as Value, true, 'black'), // seq 9-10-[11]♠ via black joker (3)
-			c('♣', 3),
-			c('♣', 4),
-			c('♣', 5),
-			c('♣', 6), // sequence 3-6♣ (4)
-			c('♥', 0 as Value, true, 'colored'), // colored joker = wild meld
-			c('♥', 13), // spare K♥
-			c('♠', 7),
-			c('♥', 7),
-			c('♦', 7) // set of 7s (3)
-		];
-		expect(canFormValidClose(hand)).toBe(true);
+		expect(canFormValidClose(hand)).toBe(false);
 	});
 });

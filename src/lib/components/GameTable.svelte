@@ -1,226 +1,81 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import {
 		gameState,
 		isHumanTurn,
-		gamePhase,
 		playerDrawPile,
 		playerDrawDiscard,
 		playerDiscard,
-		playerClose
+		playerClose,
+		playerNextRound
 	} from '$lib/stores/gameStore';
-	import { canFormValidClose, suggestMelds } from '$lib/engine/meld';
-	import { HAND_SIZE } from '$lib/engine/deck';
-	import type { Card, MeldType } from '$lib/engine/types';
-	import PlayerHand from './PlayerHand.svelte';
-	import OpponentArea from './OpponentArea.svelte';
-	import DrawPile from './DrawPile.svelte';
-	import DiscardPile from './DiscardPile.svelte';
-	import MeldArea from './MeldArea.svelte';
+	import { MeldBoard } from '$lib/stores/meldBoard.svelte';
+	import GameTableView from './GameTableView.svelte';
 
-	const MAX_MELD_SLOTS = Math.ceil(HAND_SIZE / 3) + 2;
+	/** One board instance per table; the view mutates it, this component syncs it. */
+	const board = new MeldBoard();
 
-	let selectedCardId = $state<string | null>(null);
-	let meldSlots = $state<Card[][]>(Array.from({ length: MAX_MELD_SLOTS }, () => []));
+	/** Round the board was last synced for, so a fresh deal clears staged cards. */
+	let syncedRound: number | null = null;
 
-	let humanHand = $derived($gameState?.players[0]?.hand ?? []);
-	let opponents = $derived($gameState ? $gameState.players.slice(1) : []);
-	let opponentNames = $derived(
-		$gameState ? $gameState.players.slice(1).map((_, i) => `Player ${i + 2}`) : []
-	);
-	let drawCount = $derived($gameState?.drawPile.length ?? 0);
-	let topDiscard = $derived(
-		$gameState && $gameState.discardPile.length > 0
-			? $gameState.discardPile[$gameState.discardPile.length - 1]
-			: null
-	);
-	let canClose = $derived(
-		$gameState !== null &&
-			$gamePhase !== 'finished' &&
-			canFormValidClose($gameState.players[0].hand)
-	);
-	let assignedCardIds = $derived(new Set(meldSlots.flat().map((c) => c.id)));
-	let remainingHand = $derived(humanHand.filter((c) => !assignedCardIds.has(c.id)));
+	let state = $derived($gameState);
+	let hand = $derived(state?.players[0]?.hand ?? []);
+	let discardPile = $derived(state?.discardPile ?? []);
 
-	let meldList = $derived(
-		meldSlots.map((cards) => {
-			if (cards.length === 0) return null;
-			const nonJokers = cards.filter((c) => !c.isJoker);
-			const allSameSuit =
-				nonJokers.length > 0 && nonJokers.every((c) => c.suit === nonJokers[0]?.suit);
-			const allSameValue =
-				nonJokers.length > 0 && nonJokers.every((c) => c.value === nonJokers[0]?.value);
-			const type: MeldType = allSameValue ? 'set' : allSameSuit ? 'sequence' : 'set';
-			return { cards, type };
-		})
+	let opponents = $derived(
+		(state?.players ?? []).slice(1).map((player, i) => ({
+			name: `Player ${i + 2}`,
+			handCount: player.hand.length,
+			isActive: (state?.currentPlayerIndex ?? 0) === i + 1
+		}))
 	);
 
-	function triggerMeldUpdate() {
-		meldSlots = meldSlots;
-	}
+	/** Human-readable round result for the banner; the score sheet comes later. */
+	let roundSummary = $derived.by(() => {
+		const winner = state?.roundWinner ?? null;
+		if (winner === null || !state) return null;
+		return winner === 0 ? 'You win the round' : `Player ${winner + 1} wins the round`;
+	});
 
-	function addCardToSlot(slotIndex: number, cardId: string) {
-		const card = humanHand.find((c) => c.id === cardId);
-		if (!card) return;
-		meldSlots[slotIndex] = [...meldSlots[slotIndex], card];
-		triggerMeldUpdate();
-	}
-
-	function removeCardFromSlot(cardId: string) {
-		for (let i = 0; i < meldSlots.length; i++) {
-			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
-			if (idx >= 0) {
-				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
-				triggerMeldUpdate();
+	$effect(() => {
+		const current = $gameState;
+		// Every board call reads and writes `board.slots`, so they must be untracked:
+		// otherwise this effect depends on the very state it writes and re-runs forever.
+		untrack(() => {
+			if (!current) {
+				board.reset();
+				syncedRound = null;
 				return;
 			}
-		}
-	}
 
-	function moveMeld(fromIndex: number, toIndex: number) {
-		if (fromIndex === toIndex) return;
-		if (toIndex < 0 || toIndex >= meldSlots.length) return;
-		const meld = meldSlots[fromIndex];
-		const target = meldSlots[toIndex];
-		meldSlots[fromIndex] = target;
-		meldSlots[toIndex] = meld;
-		triggerMeldUpdate();
-	}
-
-	function handleSelectCard(cardId: string) {
-		if (!$isHumanTurn || $gamePhase !== 'discard') return;
-		selectedCardId = cardId;
-	}
-
-	function handleDiscard() {
-		if (!selectedCardId) return;
-		removeCardFromSlot(selectedCardId);
-		playerDiscard(selectedCardId);
-		selectedCardId = null;
-	}
-
-	function handleDrawPile() {
-		playerDrawPile();
-	}
-
-	function handleDrawDiscard() {
-		playerDrawDiscard();
-	}
-
-	// #203: All game calls are wrapped in try-catch as error boundaries at the UI level
-	function handleClose() {
-		try {
-			playerClose();
-		} catch (e) {
-			console.error('Failed to close game', e);
-		}
-	}
-
-	function handleCardDrop(e: DragEvent, slotIndex: number) {
-		const cardId = e.dataTransfer?.getData('text/card-id');
-		if (cardId) addCardToSlot(slotIndex, cardId);
-	}
-
-	function handleMeldDrop(_e: DragEvent, fromIndex: number, toIndex: number) {
-		moveMeld(fromIndex, toIndex);
-	}
-
-	function handleCardBack(cardId: string) {
-		removeCardFromSlot(cardId);
-	}
-
-	function handleCardDropBack(e: DragEvent) {
-		const cardId = e.dataTransfer?.getData('text/card-id');
-		if (cardId) removeCardFromSlot(cardId);
-	}
-
-	function handleSuggest() {
-		const suggestions = suggestMelds(humanHand);
-		meldSlots = Array.from({ length: MAX_MELD_SLOTS }, () => []);
-		for (let i = 0; i < suggestions.length && i < MAX_MELD_SLOTS; i++) {
-			meldSlots[i] = suggestions[i];
-		}
-	}
-
-	function handleCardMoveToSlot(cardId: string, toSlotIndex: number) {
-		for (let i = 0; i < meldSlots.length; i++) {
-			const idx = meldSlots[i].findIndex((c) => c.id === cardId);
-			if (idx >= 0) {
-				const card = meldSlots[i][idx];
-				meldSlots[i] = [...meldSlots[i].slice(0, idx), ...meldSlots[i].slice(idx + 1)];
-				meldSlots[toSlotIndex] = [...meldSlots[toSlotIndex], card];
-				triggerMeldUpdate();
-				return;
+			// A new round = a new deal, so card ids no longer describe the staged cards.
+			if (current.round !== syncedRound) {
+				board.reset();
+				syncedRound = current.round;
 			}
-		}
-	}
+
+			// Drop anything staged that is no longer held (drawn, discarded, revealed).
+			board.sync(current.players[0]?.hand ?? []);
+		});
+	});
 </script>
 
-<div class="flex min-h-screen flex-col bg-gradient-to-br from-green-800 to-green-900 p-2 sm:p-4">
-	<OpponentArea
+{#if state}
+	<GameTableView
+		title="Remi"
 		{opponents}
-		names={opponentNames}
-		currentPlayerIndex={$gameState?.currentPlayerIndex ?? 0}
+		myLabel="You · Player 1"
+		{hand}
+		drawCount={state.drawPile.length}
+		{discardPile}
+		phase={state.phase}
+		isMyTurn={$isHumanTurn}
+		{board}
+		ondrawpile={playerDrawPile}
+		ondrawdiscard={playerDrawDiscard}
+		ondiscard={playerDiscard}
+		onclose={playerClose}
+		onnextround={playerNextRound}
+		{roundSummary}
 	/>
-
-	<div class="flex flex-1 flex-col items-center justify-center gap-3">
-		<div class="flex items-center gap-8 sm:gap-16">
-			<div class="flex flex-col items-center gap-2">
-				<DrawPile
-					cardCount={drawCount}
-					disabled={!$isHumanTurn || $gamePhase !== 'draw'}
-					ondraw={handleDrawPile}
-				/>
-				<span class="text-xs font-medium text-white/70">Draw Pile</span>
-			</div>
-			<div class="flex flex-col items-center gap-2">
-				<DiscardPile
-					topCard={topDiscard}
-					disabled={!$isHumanTurn || $gamePhase !== 'draw'}
-					ondraw={handleDrawDiscard}
-				/>
-				<span class="text-xs font-medium text-white/70">Discard Pile</span>
-			</div>
-		</div>
-
-		{#if $isHumanTurn}
-			<div class="flex flex-wrap justify-center gap-3">
-				{#if $gamePhase === 'draw'}
-					<button class="btn btn-primary" onclick={handleDrawPile} disabled={drawCount === 0}>
-						Draw from Pile
-					</button>
-					<button class="btn btn-secondary" onclick={handleDrawDiscard} disabled={!topDiscard}>
-						Draw from Discard
-					</button>
-				{:else if $gamePhase === 'discard'}
-					<button class="btn btn-warning" onclick={handleDiscard} disabled={!selectedCardId}>
-						Discard Selected
-					</button>
-				{/if}
-				{#if canClose}
-					<button class="btn btn-success" onclick={handleClose}> Close Game </button>
-				{/if}
-			</div>
-		{/if}
-	</div>
-
-	<div class="py-2">
-		<MeldArea
-			melds={meldList}
-			oncarddrop={(e, i) => handleCardDrop(e, i)}
-			onmelddrop={(e, f, t) => handleMeldDrop(e, f, t)}
-			oncardmovetomeld={(cardId, to) => handleCardMoveToSlot(cardId, to)}
-			oncardback={(id) => handleCardBack(id)}
-			onsuggest={handleSuggest}
-		/>
-	</div>
-
-	<div class="border-t border-white/10 pt-2">
-		<PlayerHand
-			cards={remainingHand}
-			disabled={!$isHumanTurn || $gamePhase !== 'discard'}
-			{selectedCardId}
-			onselect={handleSelectCard}
-			oncarddrop={handleCardDropBack}
-		/>
-	</div>
-</div>
+{/if}

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { cardLabel, isRed, displayValue } from '$lib/engine/display';
-import type { Card, Suit } from '$lib/engine/types';
+import type { Card, Suit, Value } from '$lib/engine/types';
 
-function card(suit: Suit, value: number): Card {
+function card(suit: Suit, value: Value): Card {
 	return { suit, value, id: 'c1', isJoker: false };
 }
 

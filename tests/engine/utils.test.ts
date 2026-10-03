@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { combinations, clearCombinationsCache } from '$lib/engine/utils';
-import type { Card, Suit } from '$lib/engine/types';
+import type { Card, Suit, Value } from '$lib/engine/types';
 
 let cardId = 0;
-function card(suit: Suit, value: number): Card {
+function card(suit: Suit, value: Value): Card {
 	return { suit, value, id: `c${++cardId}`, isJoker: false };
 }
 
@@ -35,7 +35,7 @@ describe('combinations', () => {
 	});
 
 	it('returns correct number of combinations for nCr', () => {
-		const cards = Array.from({ length: 6 }, (_, i) => card('♠', i + 1));
+		const cards = Array.from({ length: 6 }, (_, i) => card('♠', (i + 1) as Value));
 		expect(combinations(cards, 2)).toHaveLength(15);
 		expect(combinations(cards, 3)).toHaveLength(20);
 		expect(combinations(cards, 4)).toHaveLength(15);

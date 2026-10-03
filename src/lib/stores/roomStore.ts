@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
-import type { GameState } from '$lib/engine/types';
+import type { GameState, CloseDeclaration } from '$lib/engine/types';
+import { nextRound } from '$lib/engine/game';
 import type { Room } from '$lib/server/roomService';
 
 export const room = writable<Room | null>(null);
@@ -21,7 +22,18 @@ export function startPolling(code: string) {
 			const res = await fetch(`/api/rooms/${code}${pid ? `?playerId=${pid}` : ''}`);
 			if (res.ok) {
 				const data = await res.json();
-				room.set(data);
+				const local = get(room);
+				if (
+					local?.gameState &&
+					data?.gameState &&
+					data.gameState.revision <= local.gameState.revision
+				) {
+					// Local state is newer or equal; keep it, but pick up lobby/player updates.
+					room.set({ ...data, gameState: local.gameState });
+				} else {
+					// Server wins when its revision is greater.
+					room.set(data);
+				}
 			}
 		} catch (e) {
 			console.error('Room polling failed:', e);
@@ -122,20 +134,56 @@ export async function closeRoomAction() {
 	room.set(null);
 }
 
-export async function sendGameState(state: GameState) {
+export async function sendGameState(
+	state: GameState,
+	action: 'move' | 'close' | 'next-round' = 'move',
+	declaration?: CloseDeclaration
+): Promise<{ conflict: boolean; ok: boolean }> {
 	const $room = get(room);
-	if (!$room) return;
+	if (!$room) return { conflict: false, ok: false };
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			playerId: get(playerId),
 			sessionToken: get(sessionToken),
-			gameState: state
+			baseRevision: state.revision - 1,
+			action,
+			gameState: state,
+			declaration
 		})
 	});
-	if (res.ok) {
-		room.update((r) => (r ? { ...r, gameState: state } : r));
+	if (res.status === 409) {
+		try {
+			const pid = get(playerId);
+			const refetch = await fetch(`/api/rooms/${$room.code}${pid ? `?playerId=${pid}` : ''}`);
+			if (refetch.ok) {
+				const data = await refetch.json();
+				room.set(data);
+			}
+		} catch (e) {
+			console.error('Failed to re-fetch room after conflict:', e);
+		}
+		return { conflict: true, ok: false };
+	}
+	if (!res.ok) {
+		console.error('Failed to send game state:', await res.text());
+		return { conflict: false, ok: false };
+	}
+	room.update((r) => (r ? { ...r, gameState: state } : r));
+	return { conflict: false, ok: true };
+}
+
+export async function nextRoundAction(): Promise<void> {
+	const $room = get(room);
+	const state = $room?.gameState;
+	if (!state) return;
+	if (state.phase !== 'round-over') return;
+	try {
+		const newState = nextRound(state);
+		await sendGameState(newState, 'next-round');
+	} catch (e) {
+		console.error('Failed to start next round:', e);
 	}
 }
 

@@ -1,9 +1,9 @@
 import { nanoid } from 'nanoid';
 import type { GameState, GameConfig } from '$lib/engine/types';
-import { initGame } from '$lib/engine/game';
+import { initMatch, isRoundBlocked, voidRound } from '$lib/engine/game';
+import { aiTurn } from '$lib/engine/ai';
 import { roomsCol } from './db';
 import { verifySession } from './auth';
-import { recordResult, removeMatch } from './mmr';
 
 export interface Room {
 	code: string;
@@ -81,7 +81,7 @@ export async function startGame(code: string, playerId: string): Promise<{ error
 	};
 	await col().updateOne(
 		{ code: roomCode } as any,
-		{ $set: { gameState: initGame(config), status: 'playing' } } as any
+		{ $set: { gameState: initMatch(config), status: 'playing' } } as any
 	);
 	return {};
 }
@@ -99,9 +99,28 @@ export async function restartGame(code: string, playerId: string): Promise<{ err
 	};
 	await col().updateOne(
 		{ code: roomCode } as any,
-		{ $set: { gameState: initGame(config), status: 'playing' } } as any
+		{ $set: { gameState: initMatch(config), status: 'playing' } } as any
 	);
 	return {};
+}
+
+export function statusForGameState(state: GameState): 'playing' | 'finished' {
+	// Room stays 'playing' through 'round-over'; 'finished' only at match end.
+	return state.phase === 'finished' ? 'finished' : 'playing';
+}
+
+export async function saveGameState(code: string, state: GameState): Promise<void> {
+	await col().updateOne(
+		{ code: code.toUpperCase() } as any,
+		{ $set: { gameState: state, status: statusForGameState(state) } } as any
+	);
+}
+
+export async function resetStaleGameState(code: string): Promise<void> {
+	await col().updateOne(
+		{ code: code.toUpperCase() } as any,
+		{ $set: { gameState: null, status: 'waiting' } } as any
+	);
 }
 
 export async function updateGameState(code: string, state: GameState): Promise<{ error?: string }> {
@@ -109,23 +128,12 @@ export async function updateGameState(code: string, state: GameState): Promise<{
 	const room = await col().findOne({ code: roomCode } as any);
 	if (!room) return { error: 'Room not found' };
 
-	const update: Record<string, unknown> = { gameState: state };
-	if (state.phase === 'finished') {
-		update.status = 'finished';
-		await col().updateOne({ code: roomCode } as any, { $set: update } as any);
-		// MMR is only rated for 1v1 matchmaking — custom rooms with 3-4 players
-		// are casual and don't affect ratings. See P1-4 in the plan.
-		if (room.players.length === 2 && state.winner !== null) {
-			const winnerId = room.players[state.winner].id;
-			const loserId = room.players[1 - state.winner].id;
-			await recordResult(winnerId, loserId);
-			await removeMatch(room.players[0].id);
-			await removeMatch(room.players[1].id);
-		}
-		return {};
-	}
-
-	await col().updateOne({ code: roomCode } as any, { $set: update } as any);
+	// MMR is recorded only by /api/matchmaking/result at match end (matchWinner,
+	// 1v1 only) — never here, so results cannot be recorded twice.
+	await col().updateOne(
+		{ code: roomCode } as any,
+		{ $set: { gameState: state, status: statusForGameState(state) } } as any
+	);
 	return {};
 }
 
@@ -192,11 +200,36 @@ export async function cleanStalePlayers(): Promise<void> {
 }
 
 const CLEANUP_INTERVAL_MS = 15_000;
+export const TURN_TIMEOUT_MS = 120_000;
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+export async function autoPlayExpiredTurns(now = Date.now()): Promise<void> {
+	const rooms = await col()
+		.find({ status: 'playing' } as any)
+		.toArray();
+
+	for (const room of rooms) {
+		const gs = room.gameState as GameState | null;
+		if (!gs || (gs as GameState).schemaVersion !== 2) continue;
+		try {
+			if (isRoundBlocked(gs)) {
+				await saveGameState(room.code, voidRound(gs));
+			} else if (
+				(gs.phase === 'draw' || gs.phase === 'discard') &&
+				now - gs.turnStartedAt > TURN_TIMEOUT_MS
+			) {
+				await saveGameState(room.code, aiTurn(gs));
+			}
+		} catch (err) {
+			console.error(`Room ${room.code}: auto-play failed`, err);
+		}
+	}
+}
 export function startCleanupTimer(): void {
 	if (cleanupTimer) return;
 	cleanupTimer = setInterval(() => {
 		cleanStalePlayers().catch(console.error);
+		autoPlayExpiredTurns().catch(console.error);
 	}, CLEANUP_INTERVAL_MS);
 }
 export function stopCleanupTimer(): void {

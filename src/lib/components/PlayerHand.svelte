@@ -7,13 +7,15 @@
 		disabled = false,
 		selectedCardId = null,
 		onselect,
-		oncarddrop
+		oncarddrop,
+		size = 'md'
 	}: {
 		cards: CardType[];
 		disabled?: boolean;
 		selectedCardId?: string | null;
 		onselect?: (cardId: string) => void;
 		oncarddrop?: (e: DragEvent) => void;
+		size?: 'sm' | 'md' | 'lg';
 	} = $props();
 
 	let dragOver = $state(false);
@@ -40,29 +42,35 @@
 </script>
 
 <div
-	class="flex min-h-20 flex-wrap justify-center gap-1 rounded-xl border-2 p-4 transition-all sm:gap-2 {dragOver
-		? 'border-primary/50 bg-primary/5'
-		: 'border-dashed border-transparent'}"
+	class="flex min-h-24 flex-nowrap items-end justify-start gap-1.5 overflow-x-auto rounded-2xl px-3 py-3 transition-colors sm:justify-center sm:gap-2 {dragOver
+		? 'bg-gold-300/10 outline-2 outline-gold-300/60 outline-dashed'
+		: 'outline-2 outline-transparent outline-dashed'}"
 	role="region"
 	aria-label="Your hand — drop cards here to return from melds"
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
 >
-	{#each cards as card (card.id)}
-		<div
-			draggable="true"
-			role="button"
-			tabindex="-1"
-			aria-label="Card {card.id}"
-			ondragstart={(e) => handleCardDragStart(e, card)}
-		>
-			<Card
-				{card}
-				clickable={!disabled}
-				selected={card.id === selectedCardId}
-				onselect={() => onselect?.(card.id)}
-			/>
-		</div>
-	{/each}
+	{#if cards.length === 0}
+		<p class="w-full py-4 text-center text-sm text-cream-50/50">Your hand is empty</p>
+	{:else}
+		{#each cards as card (card.id)}
+			<div
+				class="shrink-0 snap-center"
+				draggable="true"
+				role="button"
+				tabindex="-1"
+				aria-label="Card {card.id}"
+				ondragstart={(e) => handleCardDragStart(e, card)}
+			>
+				<Card
+					{card}
+					{size}
+					clickable={!disabled}
+					selected={card.id === selectedCardId}
+					onselect={() => onselect?.(card.id)}
+				/>
+			</div>
+		{/each}
+	{/if}
 </div>
