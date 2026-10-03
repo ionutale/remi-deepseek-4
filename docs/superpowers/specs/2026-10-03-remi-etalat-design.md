@@ -99,6 +99,9 @@
 8. **Round 1**: first player discards only; melding disabled for everyone until the first round has completed (each player has had one turn).
 9. **Match format** (user-approved): **single game per score**, session totals kept in the room for information; "Joc nou" deals the next game; MMR (1v1) updates from the per-game winner.
 10. **Jokers adjacency** is interpreted positionally for suită; for terță the joker limits are count-based only (no ordering exists).
+11. **Pe tablă turn rule pinned**: a pe-tablă player draws one piece per turn and is **not required to discard** — pieces accumulate in their private pattern until it is complete (this is what makes the 14–28-piece patterns reachable; ropet's "cel mult 14 piese" end-of-turn limit applies to normal etalat play only). If someone else closes first: −100.
+12. **Both jokers are identical** (the physical set has two identical smiley jokers), so no colour distinction exists in this game; the engine treats them as interchangeable.
+13. **Mozaic / Bicolor / Monocolor patterns are natural-only** (no jokers) — they are about colour layout; jokers are rejected there. Simplu/Bete/Duble may use jokers subject to the standard joker limits.
 
 ---
 
