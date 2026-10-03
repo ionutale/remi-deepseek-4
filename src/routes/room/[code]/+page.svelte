@@ -342,7 +342,7 @@
 	</div>
 {:else if $roomStatus === 'playing' && $currentGameState}
 	<!-- ── Table ───────────────────────────────────────────────────────────── -->
-	<div class="flex min-h-dvh flex-col">
+	<div class="felt-surface relative flex min-h-dvh w-full flex-col">
 		<div class="flex items-center justify-between gap-2 px-2.5 pt-2.5 text-cream-50/45">
 			<span class="text-[0.65rem] font-semibold tracking-[0.24em] uppercase">
 				Round {$currentGameState.round}

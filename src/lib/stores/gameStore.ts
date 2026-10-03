@@ -12,18 +12,10 @@ import { aiTurn } from '$lib/engine/ai';
 
 export const gameState = writable<GameState | null>(null);
 
-export const currentHand = derived(gameState, ($state) =>
-	$state ? $state.players[$state.currentPlayerIndex].hand : []
-);
-
 export const isHumanTurn = derived(
 	gameState,
 	($state) => $state !== null && $state.phase !== 'finished' && $state.currentPlayerIndex === 0
 );
-
-export const gamePhase = derived(gameState, ($state) => $state?.phase ?? 'idle');
-
-export const winner = derived(gameState, ($state) => $state?.matchWinner ?? null);
 
 export function startGame(config: GameConfig) {
 	const state = initMatch(config);

@@ -2,21 +2,28 @@ import { describe, it, expect } from 'vitest';
 import { createDeck, shuffle, deal } from '$lib/engine/deck';
 
 describe('createDeck', () => {
-	it('returns 108 cards', () => {
+	it('returns 106 cards', () => {
 		const deck = createDeck();
-		expect(deck).toHaveLength(108);
+		expect(deck).toHaveLength(106);
 	});
 
-	it('has 4 jokers', () => {
+	it('has 2 jokers', () => {
 		const deck = createDeck();
 		const jokers = deck.filter((c) => c.isJoker);
-		expect(jokers).toHaveLength(4);
+		expect(jokers).toHaveLength(2);
 	});
 
-	it('has 108 unique IDs', () => {
+	it('has exactly one colored and one black joker', () => {
+		const deck = createDeck();
+		const jokers = deck.filter((c) => c.isJoker);
+		expect(jokers.filter((c) => c.jokerType === 'colored')).toHaveLength(1);
+		expect(jokers.filter((c) => c.jokerType === 'black')).toHaveLength(1);
+	});
+
+	it('has 106 unique IDs', () => {
 		const deck = createDeck();
 		const ids = new Set(deck.map((c) => c.id));
-		expect(ids.size).toBe(108);
+		expect(ids.size).toBe(106);
 	});
 
 	it('has 2 copies of each suit-value combination', () => {
@@ -58,7 +65,7 @@ describe('deal', () => {
 		const { hands, remaining } = deal(deck, 4);
 		expect(hands).toHaveLength(4);
 		hands.forEach((hand) => expect(hand).toHaveLength(14));
-		expect(remaining).toHaveLength(108 - 4 * 14);
+		expect(remaining).toHaveLength(106 - 4 * 14);
 	});
 
 	it('does not duplicate cards', () => {

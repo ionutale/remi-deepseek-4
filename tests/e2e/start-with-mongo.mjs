@@ -1,6 +1,16 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import process from 'node:process';
+
+const require = createRequire(import.meta.url);
+
+/** Vite's CLI entry point (`bin` is not an exported subpath). */
+const viteBin = path.resolve(
+	path.dirname(require.resolve('vite/package.json')),
+	require('vite/package.json').bin.vite
+);
 
 async function main() {
 	const mongod = await MongoMemoryServer.create({
@@ -12,10 +22,17 @@ async function main() {
 	const port = process.env.PORT || '4173';
 	console.log(`[E2E] MongoDB started at ${uri}`);
 
-	const server = spawn('node', ['build/index.js'], {
-		stdio: 'inherit',
-		env: { ...process.env, PORT: port }
-	});
+	// The app is built with the Vercel adapter, so there is no node server bundle in
+	// `build/` to run — E2E drives the Vite dev server instead (it compiles the
+	// current sources on demand, so the specs always test the working tree).
+	const server = spawn(
+		process.execPath,
+		[viteBin, 'dev', '--port', port, '--strictPort', '--host', '127.0.0.1'],
+		{
+			stdio: 'inherit',
+			env: { ...process.env, PORT: port }
+		}
+	);
 
 	server.on('exit', async (code) => {
 		await mongod.stop();

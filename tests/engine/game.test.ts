@@ -82,7 +82,7 @@ describe('initMatch', () => {
 
 	it('has correct draw pile and discard pile', () => {
 		const state = initMatch({ playerCount: 4, humanPlayerIndex: 0 });
-		expect(state.drawPile.length).toBe(108 - 4 * 14 - 1);
+		expect(state.drawPile.length).toBe(106 - 4 * 14 - 1);
 		expect(state.discardPile).toHaveLength(1);
 	});
 });

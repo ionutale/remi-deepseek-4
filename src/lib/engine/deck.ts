@@ -15,10 +15,8 @@ export function createDeck(): Card[] {
 		}
 	}
 
-	cards.push({ suit: '♠', value: 0, id: 'joker-black-0', isJoker: true, jokerType: 'black' });
-	cards.push({ suit: '♠', value: 0, id: 'joker-black-1', isJoker: true, jokerType: 'black' });
 	cards.push({ suit: '♥', value: 0, id: 'joker-colored-0', isJoker: true, jokerType: 'colored' });
-	cards.push({ suit: '♥', value: 0, id: 'joker-colored-1', isJoker: true, jokerType: 'colored' });
+	cards.push({ suit: '♠', value: 0, id: 'joker-black-0', isJoker: true, jokerType: 'black' });
 
 	return cards;
 }
