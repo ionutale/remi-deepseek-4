@@ -38,7 +38,9 @@
 		ondiscard,
 		onclose,
 		onnextround,
-		roundSummary = null
+		roundSummary = null,
+		turnStartedAt,
+		turnTimeoutMs
 	}: {
 		title?: string;
 		notice?: string;
@@ -58,6 +60,10 @@
 		onnextround?: () => void;
 		/** Optional: e.g. "Player 2 wins the round" — shown in the round-over banner. */
 		roundSummary?: string | null;
+		/** Server-owned turn start (ms epoch); with turnTimeoutMs drives the HUD countdown. */
+		turnStartedAt?: number;
+		/** Turn budget in ms (multiplayer: 120000; solo: omit for no timer). */
+		turnTimeoutMs?: number;
 	} = $props();
 
 	let selectedCardId = $state<string | null>(null);
@@ -102,6 +108,33 @@
 	});
 
 	let turnLabel = $derived(interactive ? 'Your turn' : 'Waiting…');
+
+	// Turn countdown (multiplayer only: both props set). Plain text updated once
+	// per second — no animation, so it is reduced-motion safe by construction.
+	let nowMs = $state(Date.now());
+	$effect(() => {
+		if (turnStartedAt === undefined || turnTimeoutMs === undefined) return;
+		const timer = setInterval(() => {
+			nowMs = Date.now();
+		}, 1000);
+		return () => clearInterval(timer);
+	});
+	let turnRemainingSec = $derived(
+		turnStartedAt !== undefined && turnTimeoutMs !== undefined
+			? Math.max(0, Math.ceil((turnStartedAt + turnTimeoutMs - nowMs) / 1000))
+			: null
+	);
+	let turnExpired = $derived(turnRemainingSec !== null && turnRemainingSec <= 0);
+	let turnCountdown = $derived(
+		turnRemainingSec === null
+			? null
+			: turnExpired
+				? 'Auto-playing…'
+				: turnRemainingSec >= 60
+					? `${Math.floor(turnRemainingSec / 60)}:${String(turnRemainingSec % 60).padStart(2, '0')}`
+					: `${turnRemainingSec}s`
+	);
+	let showCountdown = $derived(turnCountdown !== null && (phase === 'draw' || phase === 'discard'));
 
 	function handleSelect(cardId: string) {
 		if (!interactive) return;
@@ -171,6 +204,15 @@
 			></span>
 			{turnLabel}
 		</span>
+
+		{#if showCountdown}
+			<span
+				class="rounded-full bg-black/30 px-2.5 py-1 text-[0.7rem] font-semibold text-cream-50/75 tabular-nums"
+				role="timer"
+			>
+				{turnCountdown}
+			</span>
+		{/if}
 
 		{#if notice}
 			<p

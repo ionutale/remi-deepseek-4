@@ -29,6 +29,14 @@
 		await goto('/');
 	}
 
+	/** End of match: start a new solo match at the same table size. */
+	function handlePlayAgain() {
+		const raw = $gameState?.players.length ?? 2;
+		const count = (raw <= 2 ? 2 : raw >= 4 ? 4 : 3) as 2 | 3 | 4;
+		playerCount = count;
+		startGame({ playerCount: count, humanPlayerIndex: 0 });
+	}
+
 	/** End of match: clear the solo game and head back to the home screen. */
 	async function handleResetAndHome() {
 		resetGame();
@@ -97,7 +105,7 @@
 		gameState={$gameState}
 		{names}
 		myIndex={0}
-		onplayagain={handleResetAndHome}
+		onplayagain={handlePlayAgain}
 		onhome={handleResetAndHome}
 	/>
 {:else}

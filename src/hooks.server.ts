@@ -42,9 +42,16 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 export async function handle({ event, resolve }) {
-	const ip = event.getClientAddress();
-	if (!rateLimit(ip)) {
-		return new Response('Too many requests', { status: 429 });
+	// The per-room poll (GET /api/rooms/[code], every 2s per open tab) is not
+	// rate-limited: with several tabs or users behind one NAT the shared
+	// 120/min/IP bucket would 429 ordinary play. Mutations stay limited.
+	const isRoomPoll =
+		event.request.method === 'GET' && /^\/api\/rooms\/[^/]+$/.test(event.url.pathname);
+	if (!isRoomPoll) {
+		const ip = event.getClientAddress();
+		if (!rateLimit(ip)) {
+			return new Response('Too many requests', { status: 429 });
+		}
 	}
 
 	const origin = event.request.headers.get('origin');

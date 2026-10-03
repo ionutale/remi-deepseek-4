@@ -16,6 +16,11 @@ import type { CloseDeclaration, GameState } from '$lib/engine/types';
 export async function GET({ params, url }) {
 	const room = await getRoom(params.code);
 	if (!room) return json({ error: 'Room not found' }, { status: 404 });
+	if (room.gameState && (room.gameState as GameState).schemaVersion !== 2) {
+		await resetStaleGameState(params.code);
+		const refreshed = await getRoom(params.code);
+		return json(refreshed);
+	}
 	const playerId = url.searchParams.get('playerId');
 	if (playerId) await pingPlayer(params.code, playerId);
 	return json(room);
@@ -96,9 +101,15 @@ export async function PUT({ params, request }) {
 			if (gameState.phase === 'round-over' || gameState.phase === 'finished') {
 				return json({ error: 'invalid move transition' }, { status: 400 });
 			}
-			const next: GameState = { ...gameState, revision: baseRevision + 1 };
+			// turnStartedAt is server-owned: the client clock is never trusted —
+			// a future timestamp would otherwise deadlock the liveness check.
+			const next: GameState = {
+				...gameState,
+				revision: baseRevision + 1,
+				turnStartedAt: Date.now()
+			};
 			await saveGameState(params.code, next);
-			return json({ ok: true, revision: next.revision });
+			return json({ ok: true, revision: next.revision, gameState: next });
 		}
 		case 'close': {
 			if (currentPlayerId !== playerId) {
@@ -117,8 +128,9 @@ export async function PUT({ params, request }) {
 					{ status: 400 }
 				);
 			}
+			next = { ...next, turnStartedAt: Date.now() };
 			await saveGameState(params.code, next);
-			return json({ ok: true, revision: next.revision });
+			return json({ ok: true, revision: next.revision, gameState: next });
 		}
 		case 'next-round': {
 			if (stored.phase !== 'round-over') {
@@ -133,8 +145,9 @@ export async function PUT({ params, request }) {
 					{ status: 400 }
 				);
 			}
+			next = { ...next, turnStartedAt: Date.now() };
 			await saveGameState(params.code, next);
-			return json({ ok: true, revision: next.revision });
+			return json({ ok: true, revision: next.revision, gameState: next });
 		}
 		default:
 			return json({ error: 'Unknown action' }, { status: 400 });

@@ -29,7 +29,8 @@ export function playerDrawPile() {
 			let newState = drawFromPile(state);
 			newState = runAITurns(newState);
 			return newState;
-		} catch {
+		} catch (e) {
+			console.error('draw failed', e);
 			return state;
 		}
 	});
@@ -42,7 +43,8 @@ export function playerDrawDiscard() {
 			let newState = drawFromDiscard(state);
 			newState = runAITurns(newState);
 			return newState;
-		} catch {
+		} catch (e) {
+			console.error('draw failed', e);
 			return state;
 		}
 	});
@@ -55,7 +57,8 @@ export function playerDiscard(cardId: string) {
 			let newState = discardCard(state, cardId);
 			newState = runAITurns(newState);
 			return newState;
-		} catch {
+		} catch (e) {
+			console.error('discard failed', e);
 			return state;
 		}
 	});
@@ -66,7 +69,8 @@ export function playerClose(declaration: CloseDeclaration) {
 		if (!state) return state;
 		try {
 			return closeGame(state, declaration);
-		} catch {
+		} catch (e) {
+			console.error('close failed', e);
 			return state;
 		}
 	});
@@ -79,7 +83,8 @@ export function playerNextRound() {
 			let newState = nextRound(state);
 			newState = runAITurns(newState);
 			return newState;
-		} catch {
+		} catch (e) {
+			console.error('next round failed', e);
 			return state;
 		}
 	});

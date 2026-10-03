@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Card as CardType } from '$lib/engine/types';
+	import { cardLabel } from '$lib/engine/display';
 	import Card from './Card.svelte';
 
 	let {
@@ -60,7 +61,7 @@
 				draggable="true"
 				role="button"
 				tabindex="-1"
-				aria-label="Card {card.id}"
+				aria-label="Card {cardLabel(card)}"
 				ondragstart={(e) => handleCardDragStart(e, card)}
 			>
 				<Card

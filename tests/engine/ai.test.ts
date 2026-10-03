@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { initMatch } from '$lib/engine/game';
-import { autoPlayTurn, coverageScore, shouldDrawFromDiscard } from '$lib/engine/ai';
+import { autoPlayTurn, findSafestDiscard, shouldDrawFromDiscard } from '$lib/engine/ai';
+import { validateCloseDeclaration } from '$lib/engine/meld';
 import { clearCombinationsCache } from '$lib/engine/utils';
 import type { Card, GameState, Suit, Value } from '$lib/engine/types';
 
@@ -9,53 +10,113 @@ function card(suit: Suit, value: Value, isJoker = false): Card {
 	return {
 		suit,
 		value,
-		id: `a${cardCounter++}`,
+		id: `t${cardCounter++}`,
 		isJoker,
 		...(isJoker ? { jokerType: 'colored' as const } : {})
 	};
 }
 
-describe('probe', () => {
-	it('times turns', () => {
-		clearCombinationsCache();
-		let worst = 0;
-		let total = 0;
-		for (let i = 0; i < 30; i++) {
-			let state: GameState = initMatch({ playerCount: 2, humanPlayerIndex: 0 });
-			state = { ...state, currentPlayerIndex: 1 };
-			const t0 = performance.now();
-			state = autoPlayTurn(state);
-			const dt = performance.now() - t0;
-			total += dt;
-			worst = Math.max(worst, dt);
-			expect(state.phase).toBe('draw');
-		}
-		const hand = initMatch({ playerCount: 2, humanPlayerIndex: 0 }).players[0].hand;
-		const t1 = performance.now();
-		for (const c of hand) coverageScore(hand.filter((h) => h.id !== c.id));
-		const covMs = performance.now() - t1;
-		const top = initMatch({ playerCount: 2, humanPlayerIndex: 0 }).discardPile[0];
-		const t2 = performance.now();
-		for (let i = 0; i < 5; i++) shouldDrawFromDiscard(hand, top);
-		const drawMs = (performance.now() - t2) / 5;
+/**
+ * A 15-card hand one discard away from a legal close: a set of four 5s, a set
+ * of three 7s, a ♠9-10-J-Q sequence, a ♣2-3-4 sequence, and the 2♦ spare.
+ */
+function closableHand(): Card[] {
+	const hand: Card[] = [];
+	for (const suit of ['♠', '♥', '♦', '♣'] as Suit[]) hand.push(card(suit, 5 as Value));
+	for (const suit of ['♠', '♥', '♦'] as Suit[]) hand.push(card(suit, 7 as Value));
+	for (const value of [9, 10, 11, 12] as Value[]) hand.push(card('♠', value));
+	for (const value of [2, 3, 4] as Value[]) hand.push(card('♣', value));
+	hand.push(card('♦', 2 as Value));
+	return hand;
+}
 
-		// worst case: discard top belongs to no meld at all → full scan
-		const hardHand: Card[] = [
-			...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(
-				(i) => ({ suit: '♠' as Suit, value: (i + 2) as Value, id: `p${i}`, isJoker: false })
-			),
-			{ suit: '♥' as Suit, value: 7 as Value, id: 'px', isJoker: false }
+function withHand(state: GameState, playerIndex: number, hand: Card[]): GameState {
+	return {
+		...state,
+		players: state.players.map((p, i) => (i === playerIndex ? { ...p, hand } : p)),
+		currentPlayerIndex: playerIndex
+	};
+}
+
+describe('shouldDrawFromDiscard', () => {
+	it('takes a colored joker no matter the hand', () => {
+		expect(shouldDrawFromDiscard([], card('♥', 0 as Value, true))).toBe(true);
+	});
+
+	it('takes a card that completes a meld with the hand', () => {
+		const hand = [card('♠', 5 as Value), card('♥', 5 as Value), card('♣', 9 as Value)];
+		expect(shouldDrawFromDiscard(hand, card('♦', 5 as Value))).toBe(true);
+	});
+
+	it('leaves a card that belongs to no meld at all', () => {
+		const hand = [
+			card('♠', 2 as Value),
+			card('♥', 5 as Value),
+			card('♦', 9 as Value),
+			card('♠', 8 as Value),
+			card('♥', 3 as Value)
 		];
+		expect(shouldDrawFromDiscard(hand, card('♣', 13 as Value))).toBe(false);
+	});
+});
+
+describe('findSafestDiscard', () => {
+	it('keeps jokers when natural alternatives exist', () => {
+		const hand = [
+			card('♥', 0 as Value, true),
+			card('♠', 2 as Value),
+			card('♥', 7 as Value),
+			card('♦', 9 as Value)
+		];
+		expect(findSafestDiscard(hand, []).isJoker).toBe(false);
+	});
+
+	it('discards the joker only when the hand holds nothing else', () => {
+		const hand = [card('♥', 0 as Value, true)];
+		expect(findSafestDiscard(hand, []).isJoker).toBe(true);
+	});
+});
+
+describe('autoPlayTurn', () => {
+	it('closes a fixed 15-card closable hand with a valid declaration', () => {
+		const hand = closableHand();
+		const state = withHand(initMatch({ playerCount: 2, humanPlayerIndex: 0 }), 0, hand);
+		const after = autoPlayTurn({ ...state, phase: 'discard' });
+
+		expect(after.phase).not.toBe('draw');
+		expect(after.phase).toBe('round-over');
+		const topDiscard = after.discardPile[after.discardPile.length - 1];
+		expect(
+			validateCloseDeclaration(hand, { melds: after.players[0].melds, discardId: topDiscard.id })
+				.valid
+		).toBe(true);
+	});
+
+	it('never throws and ends in a valid phase over generated hands', () => {
+		const phases = ['draw', 'discard', 'round-over', 'finished'];
+		for (let i = 0; i < 10; i++) {
+			const dealt = initMatch({ playerCount: 2, humanPlayerIndex: 0 });
+			const playerIndex = i % 2;
+			const state = { ...dealt, currentPlayerIndex: playerIndex };
+			let after: GameState;
+			expect(() => {
+				after = autoPlayTurn(state);
+			}).not.toThrow();
+			expect(phases).toContain(after!.phase);
+		}
+	});
+
+	it('plays a full turn within a generous per-turn budget', () => {
 		clearCombinationsCache();
-		const hardTop: Card = { suit: '♣', value: 4, id: 'ptop', isJoker: false };
-		const t3 = performance.now();
-		let hardResult = true;
-		for (let i = 0; i < 3; i++) hardResult = shouldDrawFromDiscard(hardHand, hardTop);
-		const hardMs = (performance.now() - t3) / 3;
-		// eslint-disable-next-line no-console
-		console.log(
-			`PROBE worst ${worst.toFixed(1)}ms total ${total.toFixed(1)}ms coverage14 ${covMs.toFixed(2)}ms shouldDraw ${drawMs.toFixed(2)}ms hardScan ${hardMs.toFixed(2)}ms res ${hardResult}`
-		);
-		expect(true).toBe(true);
+		// Warm up JIT/caches so the measured worst is the steady-state cost.
+		autoPlayTurn(initMatch({ playerCount: 2, humanPlayerIndex: 0 }));
+		let worst = 0;
+		for (let i = 0; i < 10; i++) {
+			const state = initMatch({ playerCount: 2, humanPlayerIndex: 0 });
+			const t0 = performance.now();
+			autoPlayTurn({ ...state, currentPlayerIndex: 1 });
+			worst = Math.max(worst, performance.now() - t0);
+		}
+		expect(worst).toBeLessThan(50);
 	});
 });

@@ -12,7 +12,7 @@
 		matchQueueSize,
 		matchMMR
 	} from '$lib/stores/matchStore';
-	import type { Room } from '$lib/server/roomService';
+	import type { RoomSummary } from '$lib/server/roomService';
 
 	const COUNTS: readonly (2 | 3 | 4)[] = [2, 3, 4];
 
@@ -31,7 +31,7 @@
 	let maxPlayers = $state<2 | 3 | 4>(4);
 	let aiPlayerCount = $state<2 | 3 | 4>(2);
 	let error = $state('');
-	let rooms = $state<Room[]>([]);
+	let rooms = $state<RoomSummary[]>([]);
 	let loading = $state(false);
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -63,7 +63,7 @@
 		try {
 			const res = await fetch('/api/rooms');
 			if (res.ok) {
-				const all: Room[] = await res.json();
+				const all: RoomSummary[] = await res.json();
 				rooms = all;
 			}
 		} catch {

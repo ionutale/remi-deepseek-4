@@ -21,11 +21,6 @@ const MAX_MELD_SIZE = 7;
 const MAX_MELD_SIZE_EXHAUSTIVE = 13;
 /** Weight of the discard-pile danger heuristic when scoring a discard. */
 const DANGER_WEIGHT = 5;
-/**
- * Larger than any coverage gain a hand can produce (≤ 15 cards), so a joker is only
- * ever discarded when the hand holds nothing else.
- */
-const JOKER_DISCARD_PENALTY = 100;
 
 /**
  * Composition-only identity of a card set. Coverage depends purely on which cards

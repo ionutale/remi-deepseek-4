@@ -9,6 +9,7 @@
 		currentGameState,
 		roomStatus,
 		players,
+		connectionLost,
 		startGame,
 		restartGame,
 		stopPolling,
@@ -135,6 +136,17 @@
 			.catch((e) => console.error('Failed to record match result:', e));
 	});
 
+	// Polling failures keep the last state and surface a reconnecting
+	// indicator through the same notice channel (cleared on recovery, but
+	// never clobbering a rejection reason with a stale clear).
+	$effect(() => {
+		if ($connectionLost) {
+			notice = 'Reconnecting…';
+		} else if (notice === 'Reconnecting…') {
+			notice = undefined;
+		}
+	});
+
 	onDestroy(() => {
 		if (copyTimer) clearTimeout(copyTimer);
 		stopPolling();
@@ -160,8 +172,10 @@
 	}
 
 	/**
-	 * Send an optimistic state transition. A 409 re-fetches the room inside
-	 * `sendGameState`; surface that as a notice so the player retries.
+	 * Send an optimistic state transition. EVERY rejection surfaces inline:
+	 * a 409 re-fetches the room inside `sendGameState` and asks for a retry,
+	 * any other failure (400 with the engine reason, network throw) shows its
+	 * reason so the player never clicks forever on a dead move.
 	 */
 	async function submit(
 		next: GameState,
@@ -171,12 +185,15 @@
 		try {
 			const result = await sendGameState(next, action, declaration);
 			if (result.conflict) {
-				notice = 'State refreshed — please retry your move';
+				notice = result.error ?? 'State refreshed — please retry your move';
 			} else if (result.ok) {
 				notice = undefined;
+			} else {
+				notice = result.error ?? 'Move rejected — please retry';
 			}
 		} catch (e) {
 			console.error('Failed to send game state:', e);
+			notice = e instanceof Error ? e.message : 'Move rejected — please retry';
 		}
 	}
 
@@ -207,6 +224,7 @@
 			await submit(next, 'close', declaration);
 		} catch (e) {
 			console.error('Failed to close game:', e);
+			notice = e instanceof Error ? e.message : 'Close rejected — please retry';
 		}
 	}
 
@@ -362,6 +380,8 @@
 			discardPile={$currentGameState.discardPile}
 			phase={$currentGameState.phase}
 			isMyTurn={$isMyTurn}
+			turnStartedAt={$currentGameState.turnStartedAt}
+			turnTimeoutMs={120000}
 			{board}
 			ondrawpile={handleDrawPile}
 			ondrawdiscard={handleDrawDiscard}

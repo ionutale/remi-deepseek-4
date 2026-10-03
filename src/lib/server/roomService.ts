@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { GameState, GameConfig } from '$lib/engine/types';
 import { initMatch, isRoundBlocked, voidRound } from '$lib/engine/game';
+import { isTurnExpired } from '$lib/engine/liveness';
 import { aiTurn } from '$lib/engine/ai';
 import { roomsCol } from './db';
 import { verifySession } from './auth';
@@ -19,6 +20,18 @@ export interface PlayerInRoom {
 	id: string;
 	name: string;
 	lastSeen: number;
+}
+
+/**
+ * Browse-list projection: lobby metadata only, NEVER `gameState` (opponent
+ * hands would otherwise leak to anyone listing rooms).
+ */
+export interface RoomSummary {
+	code: string;
+	status: 'waiting' | 'playing' | 'finished';
+	maxPlayers: number;
+	players: { id?: string; name: string; lastSeen?: number }[];
+	createdAt: number;
 }
 
 const col = () => roomsCol<Room>();
@@ -152,10 +165,21 @@ export async function closeRoom(
 	return {};
 }
 
-export async function getAllRooms(): Promise<Room[]> {
-	return await col()
+export async function getAllRooms(): Promise<RoomSummary[]> {
+	const rooms = await col()
 		.find({} as any)
 		.toArray();
+	return rooms.map((room) => ({
+		code: room.code,
+		status: room.status,
+		maxPlayers: room.maxPlayers,
+		players: (room.players as PlayerInRoom[]).map((p) => ({
+			id: p.id,
+			name: p.name,
+			lastSeen: p.lastSeen
+		})),
+		createdAt: room.createdAt
+	}));
 }
 
 const STALE_TIMEOUT_MS = 30_000;
@@ -200,7 +224,8 @@ export async function cleanStalePlayers(): Promise<void> {
 }
 
 const CLEANUP_INTERVAL_MS = 15_000;
-export const TURN_TIMEOUT_MS = 120_000;
+/** Turn budget in ms; overridable for tests via `TURN_TIMEOUT_MS`. */
+export const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? 120_000);
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function autoPlayExpiredTurns(now = Date.now()): Promise<void> {
@@ -214,10 +239,7 @@ export async function autoPlayExpiredTurns(now = Date.now()): Promise<void> {
 		try {
 			if (isRoundBlocked(gs)) {
 				await saveGameState(room.code, voidRound(gs));
-			} else if (
-				(gs.phase === 'draw' || gs.phase === 'discard') &&
-				now - gs.turnStartedAt > TURN_TIMEOUT_MS
-			) {
+			} else if (isTurnExpired(gs, now, TURN_TIMEOUT_MS)) {
 				await saveGameState(room.code, aiTurn(gs));
 			}
 		} catch (err) {

@@ -52,6 +52,13 @@ export class MeldBoard {
 	sync(hand: Card[]): void {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local lookup, never stored in $state
 		const held = new Set(hand.map((card) => card.id));
+		// Nothing staged was dropped: skip the reassignment so the 2s poll
+		// doesn't churn renders when the hand is unchanged.
+		if (
+			this.slots.length >= MIN_SLOTS &&
+			this.slots.every((slot) => slot.every((card) => held.has(card.id)))
+		)
+			return;
 		const next = this.slots.map((slot) => slot.filter((card) => held.has(card.id)));
 		while (next.length < MIN_SLOTS) next.push([]);
 		this.slots = next;

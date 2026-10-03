@@ -390,4 +390,39 @@ test.describe('Remi E2E', () => {
 		expect(gameState.round).toBe(2);
 		expect(gameState.phase).toBe('draw');
 	});
+
+	test('Multiplayer: an illegal close declaration is rejected with the engine reason', async ({
+		page
+	}) => {
+		const roomCode = await createRoom(page, 'Alice', 2);
+
+		const joinRes = await page.request.patch(`/api/rooms/${roomCode}`, {
+			data: { action: 'join', playerName: 'Bob' }
+		});
+		expect(joinRes.ok()).toBeTruthy();
+		await expect(page.getByText('Bob', { exact: true })).toBeVisible({ timeout: 10_000 });
+
+		const credentials = await startGame(page);
+		// Doctor the deal so the room sits in 'discard' phase with the host to move.
+		await dealClosableHand(page, roomCode, credentials);
+
+		const roomRes = await page.request.get(`/api/rooms/${roomCode}`);
+		const { gameState } = (await roomRes.json()) as { gameState: GameState };
+		expect(gameState.phase).toBe('discard');
+
+		// A close whose discard card is not in the hand: the server re-validates
+		// the declaration against the stored hand and rejects with the reason.
+		const bad = await page.request.put(`/api/rooms/${roomCode}`, {
+			data: {
+				...credentials,
+				baseRevision: gameState.revision,
+				action: 'close',
+				gameState,
+				declaration: { melds: [], discardId: 'no-such-card' }
+			}
+		});
+		expect(bad.status()).toBe(400);
+		const body = (await bad.json()) as { error?: string };
+		expect(body.error).toBe('discard card must be in hand');
+	});
 });

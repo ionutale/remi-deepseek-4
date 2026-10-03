@@ -39,6 +39,10 @@ export function isValidSequence(cards: Card[]): boolean {
 		values.add(c.value);
 	}
 
+	// Same value in one suit is a set shape, never a sequence — a "sequence"
+	// needs at least two distinct values to span a range.
+	if (values.size < 2) return false;
+
 	const sorted = [...values].sort((a, b) => a - b);
 	const range = sorted[sorted.length - 1] - sorted[0] + 1;
 

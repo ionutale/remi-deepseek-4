@@ -7,6 +7,8 @@ export const room = writable<Room | null>(null);
 export const playerId = writable<string>('');
 export const sessionToken = writable<string>('');
 export const playerName = writable<string>('');
+/** Set when the 2s poll fails; the room page surfaces "Reconnecting…" via its notice. */
+export const connectionLost = writable<boolean>(false);
 
 export const currentGameState = derived(room, ($room) => $room?.gameState ?? null);
 export const roomStatus = derived(room, ($room) => $room?.status ?? null);
@@ -21,21 +23,26 @@ export function startPolling(code: string) {
 			const pid = get(playerId);
 			const res = await fetch(`/api/rooms/${code}${pid ? `?playerId=${pid}` : ''}`);
 			if (res.ok) {
+				connectionLost.set(false);
 				const data = await res.json();
 				const local = get(room);
 				if (
 					local?.gameState &&
 					data?.gameState &&
-					data.gameState.revision <= local.gameState.revision
+					data.gameState.revision < local.gameState.revision
 				) {
-					// Local state is newer or equal; keep it, but pick up lobby/player updates.
+					// Local state is strictly newer; keep it, but pick up lobby/player updates.
 					room.set({ ...data, gameState: local.gameState });
 				} else {
-					// Server wins when its revision is greater.
+					// Server wins on equal revision too: it is authoritative and the
+					// client deal was never agreed to (auto-play/close/next-round).
 					room.set(data);
 				}
+			} else {
+				connectionLost.set(true);
 			}
 		} catch (e) {
+			connectionLost.set(true);
 			console.error('Room polling failed:', e);
 		}
 	}, 2000);
@@ -138,9 +145,9 @@ export async function sendGameState(
 	state: GameState,
 	action: 'move' | 'close' | 'next-round' = 'move',
 	declaration?: CloseDeclaration
-): Promise<{ conflict: boolean; ok: boolean }> {
+): Promise<{ conflict: boolean; ok: boolean; error?: string }> {
 	const $room = get(room);
-	if (!$room) return { conflict: false, ok: false };
+	if (!$room) return { conflict: false, ok: false, error: 'No room loaded' };
 	const res = await fetch(`/api/rooms/${$room.code}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
@@ -154,6 +161,13 @@ export async function sendGameState(
 		})
 	});
 	if (res.status === 409) {
+		let error: string | undefined;
+		try {
+			const body = await res.json();
+			error = typeof body?.error === 'string' ? body.error : undefined;
+		} catch {
+			// Non-JSON 409 body (stale full-room payload): still a conflict.
+		}
 		try {
 			const pid = get(playerId);
 			const refetch = await fetch(`/api/rooms/${$room.code}${pid ? `?playerId=${pid}` : ''}`);
@@ -164,13 +178,32 @@ export async function sendGameState(
 		} catch (e) {
 			console.error('Failed to re-fetch room after conflict:', e);
 		}
-		return { conflict: true, ok: false };
+		return { conflict: true, ok: false, error };
 	}
 	if (!res.ok) {
-		console.error('Failed to send game state:', await res.text());
-		return { conflict: false, ok: false };
+		let error = `Request failed (${res.status})`;
+		try {
+			const body = await res.json();
+			if (typeof body?.error === 'string') error = body.error;
+		} catch {
+			// Non-JSON error body: keep the status fallback.
+		}
+		console.error('Failed to send game state:', error);
+		return { conflict: false, ok: false, error };
 	}
-	room.update((r) => (r ? { ...r, gameState: state } : r));
+	// Adopt the authoritative server state when the response carries one
+	// (close/next-round compute server-side); `move` echoes nothing extra, so
+	// the locally computed state stands until the next poll.
+	try {
+		const body = await res.json();
+		if (body?.gameState) {
+			room.update((r) => (r ? { ...r, gameState: body.gameState as GameState } : r));
+		} else {
+			room.update((r) => (r ? { ...r, gameState: state } : r));
+		}
+	} catch {
+		room.update((r) => (r ? { ...r, gameState: state } : r));
+	}
 	return { conflict: false, ok: true };
 }
 
@@ -193,4 +226,5 @@ export function reset() {
 	playerId.set('');
 	sessionToken.set('');
 	playerName.set('');
+	connectionLost.set(false);
 }
