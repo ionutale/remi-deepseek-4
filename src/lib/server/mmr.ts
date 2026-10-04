@@ -117,8 +117,10 @@ export async function leaveQueue(playerId: string): Promise<void> {
 export async function getMatch(playerId: string): Promise<MatchInfo | null> {
 	const doc = await activeMatchesCol().findOne({ playerId });
 	if (!doc) return null;
-	const { _id, playerId: _pid, ...match } = doc as any;
-	return match as MatchInfo;
+	// Drop the driver-added `_id` and the `playerId` index key; what remains is
+	// exactly the `MatchInfo` payload written by `tryMatch`.
+	const { _id, playerId: _pid, ...match } = doc;
+	return match;
 }
 
 export async function removeMatch(playerId: string): Promise<void> {

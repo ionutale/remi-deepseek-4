@@ -7,7 +7,7 @@ Remi Etalat este jocul clasic român de remi cu piese, pentru 2–4 jucători: 1
 ### Piese, duble, atu
 
 - **Piese:** 106 în total (104 + 2 jokers, numiți și „joly”/„gioni”). Jocul continuă în sens trigonometric.
-- **Dublă:** două piese identice (aceeași valoare *și* culoare): **dublă mică** (2–9), **dublă mare** (10–13), **dublă cheie/cui** (1). Înainte de joc, jucătorii își anunță dublele și fac **schimb orb** între categorii (valorile rămân ascunse). Cine are **3+ duble** poate apăsa **„Strică jocul”** — amestecarea și împărțirea se iau de la capăt.
+- **Dublă:** două piese identice (aceeași valoare _și_ culoare): **dublă mică** (2–9), **dublă mare** (10–13), **dublă cheie/cui** (1). Înainte de joc, jucătorii își anunță dublele și fac **schimb orb** între categorii (valorile rămân ascunse). Cine are **3+ duble** poate apăsa **„Strică jocul”** — amestecarea și împărțirea se iau de la capăt.
 - **Atu:** piesa rămasă după împărțire, vizibilă pe masă. Cine deține piesa identică poate anunța **„atu”** înainte de prima tragere → **+50** la punctaj. Dacă atuul este **1 sau joker**, e **joc dublu**: toate scorurile se dublează.
 
 ### Tura
@@ -46,14 +46,14 @@ Un jucător poate declara **„joc pe tablă”** în **primele 3 turi**. Jucăt
 
 Modelul este validat continuu (progresul e vizibil); la completare, jucătorul închide și primește bonusul:
 
-| Tip       | Observații                                                                                                            | Punctaj |
-| --------- | --------------------------------------------------------------------------------------------------------------------- | ------- |
-| Simplu    | suite și terțe, fără restricții (toate piesele de pe raft aranjate legal)                                             | 500     |
-| Bete      | 2 terțe de câte 4 piese + 2 terțe de câte 3 piese                                                                     | 700     |
+| Tip       | Observații                                                                                                                                                  | Punctaj |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Simplu    | suite și terțe, fără restricții (toate piesele de pe raft aranjate legal)                                                                                   | 500     |
+| Bete      | 2 terțe de câte 4 piese + 2 terțe de câte 3 piese                                                                                                           | 700     |
 | Mozaic    | suită completă `1…13,1`; nu există 2 piese consecutive de aceeași culoare; primele 4 piese sunt de cele 4 culori; primul 1 are altă culoare decât ultimul 1 | 1000    |
-| Bicolor   | 2 suite complete în 2 culori                                                                                          | 1200    |
-| Duble     | 7 perechi de duble identice                                                                                           | 1300    |
-| Monocolor | suită completă `1…13,1`, toate piesele de aceeași culoare                                                             | 1500    |
+| Bicolor   | 2 suite complete în 2 culori                                                                                                                                | 1200    |
+| Duble     | 7 perechi de duble identice                                                                                                                                 | 1300    |
+| Monocolor | suită completă `1…13,1`, toate piesele de aceeași culoare                                                                                                   | 1500    |
 
 Mozaic, Bicolor și Monocolor sunt **doar cu piese naturale** (fără jokers).
 
@@ -87,10 +87,10 @@ pnpm test:e2e     # teste E2E (Playwright)
 
 ## Capturi de ecran
 
-| Pagina principală | Cameră / lobby |
-| ----------------- | -------------- |
+| Pagina principală                                 | Cameră / lobby                         |
+| ------------------------------------------------- | -------------------------------------- |
 | ![Pagina principală](static/screenshots/home.png) | ![Lobby](static/screenshots/lobby.png) |
 
-| Tablă de joc (solo) | Tablă de joc (multiplayer) |
-| ------------------- | -------------------------- |
+| Tablă de joc (solo)                              | Tablă de joc (multiplayer)                              |
+| ------------------------------------------------ | ------------------------------------------------------- |
 | ![Tabla solo](static/screenshots/solo-table.png) | ![Tabla multiplayer](static/screenshots/room-table.png) |

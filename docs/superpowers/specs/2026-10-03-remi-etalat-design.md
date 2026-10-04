@@ -14,22 +14,26 @@
 ## 1. Rules of record (ropet.ro, distilled)
 
 ### 1.1 Pieces and players
+
 - 106 pieces: values 1–13 in 4 colours — **roșu, galben, albastru, negru** — two copies of each (104), plus **2 jokers** ("joly"/"gioni").
 - 2–4 players, play proceeds clockwise ("sens trigonometric").
 - Each player has a private rack (board); a shared table holds melds, the **șir** (discard column), the **grămadă** (stock) and the **atu**.
 
 ### 1.2 Duble
+
 - A **dublă** = two identical pieces (same value AND colour).
 - Categories: **dublă mică** (2–9), **dublă mare** (10–13), **dublă cheie / cui** (1).
 - Before play, players announce duble and **swap blindly** (values hidden), small↔small, big↔big, key↔key.
 - A player with **3+ duble** may **"strica jocul"** — cancel the deal and reshuffle.
 
 ### 1.3 Atu and double game
+
 - The piece left over after the dealing ritual becomes the **atu** (a single visible piece on the table).
 - The player holding the **identical piece** (same value+colour) may announce **"atu"** at the start, before their first draw → **+50** at scoring.
 - If the atu piece is a **1 or a joker**, it is **"joc dublu"**: every player's final score is **doubled**.
 
 ### 1.4 Turn structure
+
 - The first player (the one with 15 pieces) opens the game by **discarding one piece** — no draw. That first discarded piece starts the șir, is placed **sideways** and is **dead for the whole game** (nobody may take it).
 - Every other turn: **draw one piece**, optionally **meld**, then **discard one piece**. At end of turn the rack holds at most **14** pieces.
 - Draw sources:
@@ -40,11 +44,13 @@
 - **Round 1 rule:** melding is not allowed until the first round completes ("etalarea se face numai dupa ce s-a incheiat prima tura") — i.e., from each player's **second turn** onward.
 
 ### 1.5 Formations
+
 - **Suită** (sequence): ≥3 consecutive pieces of the same colour. The **1** may be used as `1-2-3` or `12-13-1`; it can **never** be in the middle (`13-1-2` illegal).
 - **Terță** (set): 3 or 4 pieces of the same value in **different colours**.
 - **Jokers** substitute any piece, with limits: a formation with **1 joker** needs **≥2 real pieces**; a formation with **2 jokers** needs **≥4 real pieces** and the two jokers **cannot be adjacent**.
 
 ### 1.6 Etalare (melding), lipire and joker swaps
+
 - **First meld of the game** must be ≥ **45 points** AND contain at least **one suită** — exception: a **terță of 1s** may be melded without a suită, and other 1-terțe stay for later.
 - From the second melding turn onward: melds have no restrictions and players may **lipi** pieces onto **any** table meld (own or opponents'), with the condition that the resulting formation stays valid.
 - **Lipit ownership**: pieces you lipi belong to you and are counted for you at scoring (physical face-down marker → digital owner tag).
@@ -53,6 +59,7 @@
 - **Joker in a 3-terță** (joker + 2 reals): the joker cannot be used/swapped until the terță is completed with the fourth colour; the player who adds the 4th piece may use the joker.
 
 ### 1.7 Pe tablă (board mode)
+
 - A player may declare **"joc pe tablă"** within the **first 3 turns** of the game.
 - A pe-tablă player:
   - builds formations **privately on their board**, never melding them on the shared table;
@@ -61,21 +68,23 @@
   - risks it all: if **someone else closes first**, they score **−100** like a non-melder.
 - The game validates the declared pattern continuously (progress visible); when the pattern is complete, the player **closes** (discards their last piece) and scores the pattern bonus:
 
-| Tip | Observații | Punctaj |
-|---|---|---|
-| Simplu | suite și terțe, fără restricții (all rack pieces arranged legally) | 500 |
-| Bete | 2 terțe de câte 4 piese + 2 terțe de câte 3 piese | 700 |
-| Mozaic | suită completă `1…13,1`; nu există 2 piese consecutive de aceeași culoare; primele 4 piese sunt de cele 4 culori; primul 1 are altă culoare decât ultimul 1 | 1000 |
-| Bicolor | 2 suite complete în 2 culori | 1200 |
-| Duble | 7 perechi de duble (identice) | 1300 |
-| Monocolor | suită completă `1…13,1` toate piesele de aceeași culoare | 1500 |
+| Tip       | Observații                                                                                                                                                  | Punctaj |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Simplu    | suite și terțe, fără restricții (all rack pieces arranged legally)                                                                                          | 500     |
+| Bete      | 2 terțe de câte 4 piese + 2 terțe de câte 3 piese                                                                                                           | 700     |
+| Mozaic    | suită completă `1…13,1`; nu există 2 piese consecutive de aceeași culoare; primele 4 piese sunt de cele 4 culori; primul 1 are altă culoare decât ultimul 1 | 1000    |
+| Bicolor   | 2 suite complete în 2 culori                                                                                                                                | 1200    |
+| Duble     | 7 perechi de duble (identice)                                                                                                                               | 1300    |
+| Monocolor | suită completă `1…13,1` toate piesele de aceeași culoare                                                                                                    | 1500    |
 
 ### 1.8 Closing and end of game
+
 - A player closes when they finish their pieces: the **last discarded piece is the closing piece**.
 - If the **stock runs out** before anyone closes, the game ends; **nobody gets the closing bonus**; each player scores melded+lipit minus rack.
 - Winner = **most points** (not necessarily the closer).
 
 ### 1.9 Scoring (end of game; per player)
+
 - Value of every melded/lipit piece belonging to you: `2–9 = 5`, `10–13 = 10`, `1 = 25`, `joker = 50`.
 - **Minus** the value of pieces left on your rack (same value table).
 - **+50 closing bonus** for the closer (unless the game ended by stock exhaustion).
@@ -108,6 +117,7 @@
 ## 3. Architecture
 
 ### 3.1 New engine — `src/lib/engine/remi/`
+
 - `types.ts` — `Color = 'red'|'yellow'|'blue'|'black'`; `Piece { id, value: 1..13 | 0, color, isJoker, jokerType? }`; `Formation { pieces: Piece[], type: 'suite'|'terta', owner, lipitBy?: (owner|null)[] }`; `GameState` v3.
 - `pieces.ts` — 106-piece deck, shuffle, deal, atu pick.
 - `formations.ts` — `validateSuite`, `validateTerta`, `validateFormation` (joker limits, adjacency, 1-wrap), point values, first-meld validator (≥45 + suită / 1-terță rule).
@@ -118,6 +128,7 @@
 - `ai.ts` — etalat + pe-tablă AI.
 
 ### 3.2 State shape (v3, abridged)
+
 ```ts
 GameState {
   schemaVersion: 3
@@ -146,6 +157,7 @@ GameState {
 ```
 
 ### 3.3 UI structure
+
 - `Piece.svelte` (new; replaces Card.svelte) — wooden tile, big coloured number, smiley jokers, sizes.
 - `Rack.svelte` — private rack (14 tiles), selection.
 - `Table.svelte` / `TableView.svelte` — shared melds (rows), șir column with sideways dead first tile, stock, atu; meld builder with live points + **first-meld ≥45 + suită** indicator; lipi/swap target highlighting.
@@ -156,10 +168,12 @@ GameState {
 - All copy in Romanian (glossary §4).
 
 ### 3.4 Server
+
 - Re-validate `meld`, `lipi`, `swapJoker`, `close`, `peTabla` actions with the engine; keep revision + turn-ownership.
 - Pre-game phases live in room state; MMR from per-game winner.
 
 ### 3.5 AI
+
 - Etalat: opening 45+ with suită, lipire, take-last/break decisions, joker use/swaps, closing.
 - Pe tablă: pattern planning + completion.
 - Mass self-play simulation asserting rule invariants + performance bounds.
@@ -178,10 +192,12 @@ GameState {
 ## 5. Implementation phases
 
 ### Phase 1 — Engine core
+
 1.1 `types.ts` + `pieces.ts` (106 pieces, 4 colours, 2 jokers; shuffle/deal/atu) + tests.
 1.2 `formations.ts`: suite (incl. 1-wrap), terță, joker limits/adjacency, point values, `canOpen` (45 + suită / 1-terță) + exhaustive test matrix.
 
 ### Phase 2 — Engine flow
+
 2.1 `table.ts` + state shape v3; șir with dead first piece; stock; atu.
 2.2 `actions.ts`: draw sources, take-last/atu with same-turn meld requirement, break-șir conditions, meld, lipi (ownership, own-melds-only jokers), joker swap, discard, round-1 rule, close.
 2.3 `scoring.ts`: full matrix incl. non-melder, joker close, double game, stock-out.
@@ -189,33 +205,41 @@ GameState {
 2.5 Engine tests for every rule + edge cases.
 
 ### Phase 3 — AI
+
 3.1 Etalat AI; 3.2 pe-tablă AI; 3.3 mass self-play simulations (no illegal states, perf bounds).
 
 ### Phase 4 — UI
+
 4.1 Tiles (`Piece.svelte`) + rack; 4.2 shared table + șir + stock + atu; 4.3 meld builder + lipi/swap interactions; 4.4 animations + responsive + a11y; 4.5 full Romanian copy pass.
 
 ### Phase 5 — Pre-game & endgame
+
 5.1 Duble exchange + "Strică jocul"; 5.2 atu announcement + Joc dublu banner; 5.3 end-game sheet + session totals + next game + MMR.
 
 ### Phase 6 — Server & multiplayer
+
 6.1 Action validation (meld/lipi/swap/close/pe-tablă) + pre-game phases over the room API; 6.2 single-player store; 6.3 revision/turn ownership retained.
 
 ### Phase 7 — Finish
+
 7.1 E2E (etalat close, pe-tablă flow, duble/atu, scoreboard) in Romanian selectors; 7.2 screenshots; 7.3 README/RO rules doc; 7.4 delete close-mode leftovers (old engine, MeldArea controller, close sheet) and update docs.
 
 ---
 
 ## 6. Testing plan
+
 - Unit: formation matrix (suite wrap, joker counts/adjacency), first-meld rule, draw/take/break conditions, lipi/ownership, joker swap lifecycle, full scoring matrix (incl. ×2/×4), pe-tablă pattern validators, duble categories/redeal.
 - Simulation: thousands of AI self-play games per mode asserting invariants (14-tile rack, no orphan tiles, valid formations at all times) and performance.
 - E2E: complete etalat game to close with deterministic doctored states; pe-tablă completion; duble + atu phases; end sheet + next game.
 - Visual: regenerated screenshots.
 
 ## 7. Risks & mitigations
+
 - **Rule ambiguity** (joker swap wording, șir breaking): pinned in §2; spec is binding.
 - **Scope**: two modes + pre-game phases + AI + server; phased delivery with gates per phase.
 - **Performance** of formation validation/AI: bounded enumeration + memoization + simulation tests.
 - **Replacing shipped code**: keep git history; delete close-mode only in Phase 7 after the new flow passes.
 
 ## 8. Out of scope / deferred
+
 Extra-joker purchases (6 jokers/110 pieces variant), tournaments, reconnect/resume, spectators, server-authoritative rule execution (beyond action validation), sound.

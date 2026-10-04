@@ -247,9 +247,11 @@
 		}
 		if (isOpeningTurn) return 'Prima tură: aruncă o piesă ca să deschizi șirul.';
 		if (me?.peTabla) return 'Joc pe tablă: trage o piesă și construiește modelul tău.';
-		if (mustUse.length > 0) return 'Folosește piesa luată într-o formație înainte să arunci.';
+		if (mustUse.length > 0)
+			return 'Ai luat o piesă: folosește-o într-o formație sau aruncă — dacă nu o folosești, se întoarce.';
 		if (!state.turnState.hasDrawn) return 'Trage o piesă: din grămadă, ultima din șir sau atuul.';
-		if (rack.length === 1) return 'Îți-a rămas o singură piesă — poți închide jocul.';
+		if (rack.length - mustUse.length === 1)
+			return 'Îți-a rămas o singură piesă — poți închide jocul.';
 		return 'Alege o piesă și etalează, lipește, aruncă sau închide.';
 	});
 
@@ -474,7 +476,9 @@
 	}
 
 	async function handleClose() {
-		const piece = rack[0];
+		// The engine returns still-pending taken pieces before closing, so the piece
+		// left to discard must be the first one that is NOT awaiting use.
+		const piece = rack.find((p) => !mustUse.includes(p.id));
 		if (piece) await act({ kind: 'close', pieceId: piece.id });
 	}
 
@@ -909,7 +913,7 @@
 		onlipi={isMyTurn && (me?.melded ?? false) && selectedPiece ? handleLipi : undefined}
 		onswapjoker={isMyTurn && !me?.peTabla && swapTargets.length > 0 ? handleSwapJoker : undefined}
 		onbreaksir={canBreakSir && breakSirMode ? (pieceId) => (breakSirTarget = pieceId) : undefined}
-		onclose={isMyTurn && !me?.peTabla && rack.length === 1 && mustUse.length === 0
+		onclose={isMyTurn && !me?.peTabla && rack.length - mustUse.length === 1
 			? handleClose
 			: undefined}
 		onpeTabla={isMyTurn && !me?.peTabla && !me?.melded && (me?.turnsTaken ?? 9) < 3

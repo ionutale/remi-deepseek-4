@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { tryMatch, getMatch, leaveQueue, getQueueSize, isQueued, getMMR } from '$lib/server/mmr';
-import { createRoom, startGame } from '$lib/server/roomService';
+import { createRoom, startGame, type Room } from '$lib/server/roomService';
 import { createSession, verifySession, sanitizeName } from '$lib/server/auth';
 import { roomsCol } from '$lib/server/db';
 import { nanoid } from 'nanoid';
@@ -27,11 +27,11 @@ export async function POST({ request }) {
 		const match = result.matched;
 
 		await createRoom(match.player1Name, 2, match.roomCode, match.player1Id);
-		await roomsCol().updateOne(
-			{ code: match.roomCode } as any,
+		await roomsCol<Room>().updateOne(
+			{ code: match.roomCode },
 			{
 				$push: { players: { id: match.player2Id, name: match.player2Name, lastSeen: Date.now() } }
-			} as any
+			}
 		);
 
 		await startGame(match.roomCode, match.player1Id);
