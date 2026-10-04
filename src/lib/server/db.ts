@@ -62,6 +62,22 @@ export async function connectDB(): Promise<Db> {
 	return db;
 }
 
+let connectPromise: Promise<Db> | undefined;
+
+/**
+ * Connect on demand, sharing one in-flight attempt between concurrent callers.
+ * Serverless cold starts must not rely only on the module-init connect: it can
+ * fail (or still be running) when the first request arrives, and a failed
+ * attempt would otherwise leave the instance without a usable connection.
+ */
+export function ensureDB(): Promise<Db> {
+	if (db) return Promise.resolve(db);
+	connectPromise ??= connectDB().finally(() => {
+		connectPromise = undefined;
+	});
+	return connectPromise;
+}
+
 export function getDB(): Db {
 	if (!db) throw new Error('DB not connected. Call connectDB() first.');
 	return db;

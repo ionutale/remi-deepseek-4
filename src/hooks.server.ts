@@ -1,18 +1,23 @@
-import { connectDB, disconnectDB } from '$lib/server/db';
+import { connectDB, disconnectDB, ensureDB } from '$lib/server/db';
 import { startCleanupTimer as startRoomCleanup } from '$lib/server/roomService';
 import { startCleanupTimer as startMmrCleanup } from '$lib/server/mmr';
+
+let timersStarted = false;
+
+function startTimersOnce(): void {
+	if (timersStarted) return;
+	timersStarted = true;
+	startRoomCleanup();
+	startMmrCleanup();
+}
 
 connectDB()
 	.then(() => {
 		console.log('MongoDB connected');
-		startRoomCleanup();
-		startMmrCleanup();
+		startTimersOnce();
 	})
 	.catch((err) => {
-		console.error(
-			'MongoDB connection failed — game state is in-memory only and will be lost on restart',
-			err
-		);
+		console.error('MongoDB connection failed — will retry on demand per request', err);
 	});
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -57,6 +62,15 @@ export async function handle({ event, resolve }) {
 	const origin = event.request.headers.get('origin');
 	if (!isAllowedOrigin(origin)) {
 		return new Response('Forbidden', { status: 403 });
+	}
+
+	// Make sure the DB is connected before handling: cold starts may not have
+	// finished the module-init connection yet (or it may have failed once).
+	try {
+		await ensureDB();
+		startTimersOnce();
+	} catch (err) {
+		console.error('MongoDB unavailable for request', err);
 	}
 
 	return resolve(event);
