@@ -19,18 +19,29 @@ async function main() {
 	const uri = mongod.getUri();
 	process.env.MONGODB_URL = uri;
 	process.env.MONGODB_DB = 'remi_test';
-	const port = process.env.PORT || '4173';
+	// Must match `playwright.config.ts`'s default port — the config waits for this
+	// exact origin, and `hooks.server.ts` only allows it because of the ORIGIN set
+	// below.
+	const port = process.env.PORT || '4180';
+	// `src/hooks.server.ts` rejects any request whose `Origin` is not in its
+	// allowlist, and the built-in entries are the `localhost` spellings of the dev
+	// ports. The dev server is bound to `127.0.0.1` (see below) and Playwright
+	// navigates to `http://127.0.0.1:<port>` (see playwright.config.ts), so the
+	// exact origin the specs use is added here.
+	process.env.ORIGIN = `http://127.0.0.1:${port}`;
 	console.log(`[E2E] MongoDB started at ${uri}`);
 
 	// The app is built with the Vercel adapter, so there is no node server bundle in
 	// `build/` to run — E2E drives the Vite dev server instead (it compiles the
 	// current sources on demand, so the specs always test the working tree).
+	// `--strictPort`: the config waits for this exact port, so a silent fallback to
+	// the next free port would hang the run.
 	const server = spawn(
 		process.execPath,
 		[viteBin, 'dev', '--port', port, '--strictPort', '--host', '127.0.0.1'],
 		{
 			stdio: 'inherit',
-			env: { ...process.env, PORT: port }
+			env: { ...process.env, PORT: port, ORIGIN: process.env.ORIGIN }
 		}
 	);
 

@@ -1,7 +1,23 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
+
+/**
+ * Screenshot run for `static/screenshots/*` (the set the README embeds).
+ *
+ * Four captures of the shipped UI, all in Romanian (spec §4):
+ *   home.png        — the home page: hero + both paths (solo / online)
+ *   lobby.png       — a room lobby with two seats, waiting for the host
+ *   room-table.png  — a two-player table in the `playing` phase, mid-turn
+ *   solo-table.png  — a solo table in the `playing` phase, mid-turn
+ *
+ * Every step is driven by clicking through the app, so the whole run costs a
+ * single document load (the in-app navigations are SvelteKit client-side `goto`s)
+ * — which matters because `src/hooks.server.ts` rate-limits everything except the
+ * room poll to 120 requests / 60s / IP and one dev-server document load is ~80 of
+ * them. The only second browser leg (the guest seat) goes through the room API.
+ */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.resolve(__dirname, '../../static/screenshots');
@@ -9,276 +25,180 @@ const SCREENSHOT_DIR = path.resolve(__dirname, '../../static/screenshots');
 /** Captures with animations fast-forwarded, so deals and counts are settled. */
 const SHOT = { animations: 'disabled' } as const;
 
-/** The score sheet counts its numbers up over ~650ms; wait for two equal reads. */
-async function settled(locator: Locator): Promise<void> {
-	let previous = '';
-	await expect
-		.poll(
-			async () => {
-				const text = await locator.innerText();
-				const stable = text === previous;
-				previous = text;
-				return stable;
-			},
-			{ timeout: 10_000 }
-		)
-		.toBe(true);
+/** Every file this spec owns; anything else in the directory is a stale capture. */
+const SHOTS = ['home.png', 'lobby.png', 'room-table.png', 'solo-table.png'];
+
+async function shoot(page: Page, name: string): Promise<void> {
+	await page.screenshot({
+		path: path.join(SCREENSHOT_DIR, name),
+		fullPage: true,
+		...SHOT
+	});
+	expect(fs.statSync(path.join(SCREENSHOT_DIR, name)).size).toBeGreaterThan(1000);
 }
 
-/** The slice of the room game state this spec reads and replays. */
-interface Card {
-	id: string;
-	suit?: string;
-	value?: number;
-	isJoker?: boolean;
+/* ── Locators (Romanian copy, spec §4) ─────────────────────────────────── */
+
+function rack(page: Page) {
+	return page.getByRole('group', { name: /^Tabla ta/ });
 }
+
+/** The șir column label, e.g. "Șir (2)". */
+function sir(page: Page) {
+	return page.getByText(/^Șir \(\d+\)$/, { exact: true });
+}
+
+async function expectRackSize(page: Page, size: number): Promise<void> {
+	await expect(rack(page)).toHaveAttribute('aria-label', `Tabla ta (${size} piese)`);
+}
+
+/** The slice of the stored game state the guest leg reads. */
 interface GameState {
-	phase: string;
-	currentPlayerIndex: number;
 	revision: number;
-	drawPile: Card[];
-	discardPile: Card[];
-	players: { hand: Card[] }[];
+	phase: string;
+	players: { rack: { id: string }[] }[];
 }
-
-/**
- * Full page load, then wait for hydration — the E2E server is the Vite dev server,
- * so clicks before hydration are dropped. See tests/e2e/start-with-mongo.mjs.
- */
-async function open(page: Page, urlPath: string) {
-	await page.goto(urlPath);
-	await page.waitForLoadState('networkidle');
-}
-
-/**
- * One full turn for the seat at `currentPlayerIndex`: draw from the stock (or the
- * discard pile when there is one), then discard. Applied server-side through the
- * room API so the screenshot run does not need a second browser for the opponent.
- */
-function opponentTurn(state: GameState): GameState {
-	let s = { ...state };
-	if (s.phase === 'draw') {
-		const fromDiscard = s.discardPile.length > 0;
-		const drawn = fromDiscard ? s.discardPile[s.discardPile.length - 1] : s.drawPile.at(-1)!;
-		s = {
-			...s,
-			players: s.players.map((p, i) =>
-				i === s.currentPlayerIndex ? { ...p, hand: [...p.hand, drawn] } : p
-			),
-			...(fromDiscard
-				? { discardPile: s.discardPile.slice(0, -1) }
-				: { drawPile: s.drawPile.slice(0, -1) }),
-			phase: 'discard'
-		};
-	}
-	if (s.phase === 'discard') {
-		const hand = s.players[s.currentPlayerIndex].hand;
-		const card = hand[hand.length - 1];
-		s = {
-			...s,
-			players: s.players.map((p, i) =>
-				i === s.currentPlayerIndex ? { ...p, hand: p.hand.filter((c) => c.id !== card.id) } : p
-			),
-			discardPile: [...s.discardPile, card],
-			phase: 'draw',
-			currentPlayerIndex: (s.currentPlayerIndex + 1) % s.players.length
-		};
-	}
-	return s;
-}
-
 interface Credentials {
 	playerId: string;
 	sessionToken: string;
 }
 
 /**
- * A 15-card hand one card away from a legal close: two sets (four 5s, three 7s)
- * and two sequences (♠9-10-J-Q, ♣2-3-4), with the 2♦ left over as closing discard.
- *
- * The `-e2e` id suffix marks the cards as synthetic and, more usefully, keeps them
- * distinct from any card a previous deal staged on the board.
+ * The two pre-game phases — identical on `/game` and `/room/[code]`: the blind
+ * duble exchange, then the atu announcement. Either seat may resolve both.
  */
-const CLOSABLE_HAND: Card[] = [
-	...['♠', '♥', '♦', '♣'].map((suit) => ({ suit, value: 5 })),
-	...['♠', '♥', '♦'].map((suit) => ({ suit, value: 7 })),
-	...[
-		['♠', 9],
-		['♠', 10],
-		['♠', 11],
-		['♠', 12]
-	].map(([suit, value]) => ({ suit: suit as string, value: value as number })),
-	...[
-		['♣', 2],
-		['♣', 3],
-		['♣', 4]
-	].map(([suit, value]) => ({ suit: suit as string, value: value as number })),
-	{ suit: '♦', value: 2 }
-].map(({ suit, value }) => ({ suit, value, id: `${suit}-${value}-e2e`, isJoker: false }));
-
-/**
- * Starts the game and returns the host credentials the page used, read off its own
- * `action: 'start'` request (they live only in the page's stores).
- */
-async function startGame(page: Page): Promise<Credentials> {
-	const started = page.waitForRequest(
-		(request) =>
-			request.method() === 'PATCH' &&
-			request.url().includes('/api/rooms/') &&
-			request.postData()?.includes('"start"') === true
-	);
-	await page.getByRole('button', { name: 'Start Game' }).click();
-	await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 10_000 });
-
-	const credentials = JSON.parse((await started).postData() ?? '{}') as Credentials;
-	expect(credentials.playerId).toBeTruthy();
-	return credentials;
+async function runPreGame(page: Page): Promise<void> {
+	await expect(page.getByRole('heading', { name: 'Remi Etalat · Duble' })).toBeVisible();
+	await page.getByRole('button', { name: 'Continuă', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Remi Etalat · Atu' })).toBeVisible();
+	await page.getByRole('button', { name: 'Continuă jocul' }).click();
+	await expect(page.getByText('Rândul tău', { exact: true })).toBeVisible();
 }
 
 /**
- * Deals a closable 15-card hand to the host through the room API: `action: 'move'`
- * accepts any state for the player whose turn it is. Mirrors game.e2e.ts.
+ * Turn 1 — the opening discard, without a draw: the dead first șir piece. The
+ * callers assert the resulting șir size, because the solo calculator seat answers
+ * immediately while a room seat waits for its opponent.
  */
-async function dealClosableHand(page: Page, roomCode: string, credentials: Credentials) {
-	const roomRes = await page.request.get(`/api/rooms/${roomCode}`);
-	const { gameState } = (await roomRes.json()) as { gameState: GameState };
+async function openingDiscard(page: Page): Promise<void> {
+	await expect(
+		page.getByText('Prima tură: aruncă o piesă ca să deschizi șirul.', { exact: true })
+	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Aruncă · alege piesa' })).toBeDisabled();
+	await rack(page).getByRole('button').first().click();
+	await page.getByRole('button', { name: 'Aruncă', exact: true }).click();
+	await expectRackSize(page, 14);
+}
 
-	const putRes = await page.request.put(`/api/rooms/${roomCode}`, {
-		data: {
-			...credentials,
-			baseRevision: gameState.revision,
-			action: 'move',
-			gameState: {
-				...gameState,
-				players: gameState.players.map((player, index) =>
-					index === 0 ? { ...player, hand: CLOSABLE_HAND } : player
-				),
-				currentPlayerIndex: 0,
-				phase: 'discard',
-				revision: gameState.revision + 1
-			}
+/**
+ * The guest seat's turn, sent through the room API so the screenshot run needs
+ * no second browser. Seat 1 is the guest (the host created the room).
+ */
+async function guestTurn(page: Page, code: string, guest: Credentials): Promise<void> {
+	const put = async (baseRevision: number, intent: Record<string, unknown>) => {
+		const res = await page.request.put(`/api/rooms/${code}`, {
+			data: { ...guest, baseRevision, intent }
+		});
+		expect(res.ok()).toBeTruthy();
+		return ((await res.json()) as { gameState: GameState }).gameState;
+	};
+	const stored = (
+		(await (await page.request.get(`/api/rooms/${code}`)).json()) as {
+			gameState: GameState;
 		}
+	).gameState;
+	const drawn = await put(stored.revision, { kind: 'draw-stock' });
+	const discarded = await put(drawn.revision, {
+		kind: 'discard',
+		pieceId: drawn.players[1]!.rack[0]!.id
 	});
-	expect(putRes.ok()).toBeTruthy();
+	expect(discarded.phase).toBe('playing');
 }
 
 test.describe('Screenshots', () => {
-	/**
-	 * The app rate-limits 120 requests per 60s per IP (src/hooks.server.ts) and the whole
-	 * E2E run counts as that one IP: the room pages poll every 2s on top of a document
-	 * per page load, so back-to-back tests tip the bucket into a 429 — which the room
-	 * stores turn into a silently stuck screen. This short pause before each test keeps
-	 * the run's request rate under the limit instead of racing it.
-	 */
-	test.beforeEach(async () => {
-		await new Promise((resolve) => setTimeout(resolve, 6_000));
-	});
+	test.setTimeout(240_000);
 
-	test.setTimeout(120_000);
-
-	test('take screenshots of all key pages', async ({ context }) => {
+	test('capture home, room lobby, room table and solo table', async ({ page }) => {
 		fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
-		const page = await context.newPage();
-		// Tall enough that no page needs stitching: a full-page capture taller than the
-		// viewport leaves the last rows unpainted in dev mode.
-		await page.setViewportSize({ width: 1280, height: 1000 });
+		// Tall enough that no capture needs stitching: a full-page shot taller than
+		// the viewport can leave the last rows unpainted.
+		await page.setViewportSize({ width: 1280, height: 1100 });
 
-		// ── 1. Home page ──
-		await open(page, '/');
-		await expect(page.getByRole('heading', { name: 'Draw. Meld. Outplay.' })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Start game vs AI' })).toBeVisible();
-		await page.screenshot({
-			path: path.join(SCREENSHOT_DIR, 'home.png'),
-			fullPage: true,
-			...SHOT
-		});
+		// ── 1. Home ──
+		await page.goto('/');
+		await page.waitForLoadState('networkidle');
+		await expect(page.getByRole('heading', { name: 'Remi Etalat' })).toBeVisible();
+		await expect(
+			page.getByRole('heading', { name: 'Joacă împotriva calculatorului' })
+		).toBeVisible();
+		await expect(page.getByRole('region', { name: 'Joc online' })).toBeVisible();
+		await shoot(page, 'home.png');
 
 		// ── 2. Room lobby ──
-		await page.getByLabel('Your name').fill('Alice');
+		await page.getByLabel('Numele tău').fill('Alice');
 		await page
-			.getByRole('group', { name: 'Max players' })
+			.getByRole('group', { name: 'Jucători max', exact: true })
 			.getByRole('button', { name: '2', exact: true })
 			.click();
-		await page.getByRole('button', { name: 'Create room' }).click();
-		await page.waitForURL(/\/room\//);
-		const roomCode = page.url().split('/').pop()!;
+		// Two buttons carry this name (the tab and the submit) — the submit is last.
+		await page.getByRole('button', { name: 'Creează cameră' }).last().click();
+		// `nanoid(6)` also emits `-` and `_`, and lowercase for the create-room path.
+		await page.waitForURL(/\/room\/[A-Za-z0-9_-]{6}$/);
+		const code = page.url().split('/').pop()!;
 
-		const joinRes = await page.request.patch(`/api/rooms/${roomCode}`, {
+		// A second seat, taken through the API: it needs no browser of its own.
+		const joinRes = await page.request.patch(`/api/rooms/${code}`, {
 			data: { action: 'join', playerName: 'Bob' }
 		});
 		expect(joinRes.ok()).toBeTruthy();
-		const joinData = (await joinRes.json()) as { playerId: string; sessionToken: string };
+		const guest = (await joinRes.json()) as Credentials;
+		const seats = page.getByRole('region', { name: 'Locuri la masă' });
+		await expect(seats.getByText('2 / 2', { exact: true })).toBeVisible({ timeout: 15_000 });
+		await shoot(page, 'lobby.png');
 
-		await expect(page.getByText('Bob', { exact: true })).toBeVisible({ timeout: 10_000 });
-		await expect(page.getByRole('button', { name: 'Start Game' })).toBeEnabled();
-		await page.screenshot({
-			path: path.join(SCREENSHOT_DIR, 'lobby.png'),
-			fullPage: true,
-			...SHOT
+		// ── 3. Room table (playing) ──
+		await page.getByRole('button', { name: 'Începe jocul' }).click();
+		await runPreGame(page);
+		await openingDiscard(page);
+		await expect(sir(page)).toHaveText('Șir (1)');
+		await guestTurn(page, code, guest);
+		await expect(page.getByText('Rândul tău', { exact: true })).toBeVisible({ timeout: 15_000 });
+		await page.getByRole('button', { name: 'Trage din grămadă' }).click();
+		await expectRackSize(page, 15);
+		await expect(sir(page)).toHaveText('Șir (2)');
+		await shoot(page, 'room-table.png');
+
+		// Back home through the app's own button (client-side navigation), then the
+		// solo table — still no second document load.
+		await page.getByRole('button', { name: 'Părăsește camera' }).click();
+		await page.waitForURL('/');
+		await page
+			.getByRole('group', { name: 'Jucători', exact: true })
+			.getByRole('button', { name: '2', exact: true })
+			.click();
+		await page.getByRole('button', { name: 'Începe jocul' }).click();
+		await page.waitForURL('**/game');
+
+		// ── 4. Solo table (playing) ──
+		await runPreGame(page);
+		await openingDiscard(page);
+		// The calculator seat answered on its own, so it is our turn again: draw and
+		// stop mid-turn, with a full rack and the whole action bar live.
+		await expect(sir(page)).toHaveText('Șir (2)');
+		await expect(page.getByRole('button', { name: 'Trage din grămadă' })).toBeVisible({
+			timeout: 15_000
 		});
+		await page.getByRole('button', { name: 'Trage din grămadă' }).click();
+		await expectRackSize(page, 15);
+		await expect(page.getByRole('button', { name: 'Etalează' })).toBeVisible();
+		await shoot(page, 'solo-table.png');
 
-		// ── 3. Game board ──
-		const credentials = await startGame(page);
-
-		const hand = page.getByRole('region', { name: /Your hand/ });
-		const stock = page.getByRole('button', { name: /Draw pile, \d+ cards remaining/ });
-
-		// Play 2 rounds so the discard pile and the board look lived-in.
-		for (let round = 0; round < 2; round++) {
-			// Alice's turn, through the UI.
-			await stock.click();
-			await expect(hand.locator('button')).toHaveCount(15);
-			await hand.locator('button:not([disabled])').first().click();
-			await page.getByRole('button', { name: /^Discard(?! pile)/ }).click();
-
-			// Bob's turn, through the room API (baseRevision gates the optimistic lock).
-			const getRes = await page.request.get(`/api/rooms/${roomCode}`);
-			const roomData = (await getRes.json()) as { gameState: GameState };
-			expect(roomData.gameState.phase).toBe('draw');
-			const moveRes = await page.request.put(`/api/rooms/${roomCode}`, {
-				data: {
-					playerId: joinData.playerId,
-					sessionToken: joinData.sessionToken,
-					baseRevision: roomData.gameState.revision,
-					action: 'move',
-					gameState: opponentTurn(roomData.gameState)
-				}
-			});
-			expect(moveRes.ok()).toBeTruthy();
-
-			// Wait for polling to sync Alice's page.
-			await expect(page.getByText('Your turn', { exact: true })).toBeVisible({ timeout: 10_000 });
-		}
-
-		// Group the hand into real melds so the rack shows staged cards.
-		await page.getByRole('button', { name: 'Organize' }).click();
-		await expect(page.getByText(/\d+\s+cards staged/)).toBeVisible();
-
-		await page.screenshot({
-			path: path.join(SCREENSHOT_DIR, 'game-board.png'),
-			fullPage: true,
-			...SHOT
-		});
-
-		// ── 4. Round score sheet ──
-		// A random deal is essentially never closable, so hand the host a hand that is
-		// (see the mirrored helper in game.e2e.ts) and close it for real: the server
-		// re-validates the declaration before it scores the round.
-		await dealClosableHand(page, roomCode, credentials);
-		await expect(hand.locator('button')).toHaveCount(15, { timeout: 10_000 });
-		await page.getByRole('button', { name: 'Organize' }).click();
-		await page.getByRole('button', { name: /^Close — discard/ }).click();
-
-		const sheet = page.getByRole('status', { name: 'Round score sheet' });
-		await expect(sheet).toBeVisible({ timeout: 10_000 });
-		await expect(
-			page.getByRole('heading', { name: 'Round 1 — Alice wins the round' })
-		).toBeVisible();
-		await settled(sheet);
-		await page.screenshot({
-			path: path.join(SCREENSHOT_DIR, 'score-sheet.png'),
-			fullPage: true,
-			...SHOT
-		});
+		// The stale close-mode captures are gone: the directory holds exactly the
+		// four images this spec owns (README embeds these four).
+		const onDisk = fs
+			.readdirSync(SCREENSHOT_DIR)
+			.filter((entry) => entry.endsWith('.png'))
+			.sort();
+		expect(onDisk).toEqual([...SHOTS].sort());
 	});
 });
