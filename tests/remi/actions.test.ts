@@ -597,7 +597,8 @@ describe('drawStock', () => {
 		expect(after.turnState).toEqual({
 			hasDrawn: true,
 			drawnFrom: 'stock',
-			mustUsePieceIds: []
+			mustUsePieceIds: [],
+			pending: []
 		});
 	});
 
@@ -623,7 +624,8 @@ describe('takeLastFromSir', () => {
 		expect(after.turnState).toEqual({
 			hasDrawn: true,
 			drawnFrom: 'sir',
-			mustUsePieceIds: ['last']
+			mustUsePieceIds: ['last'],
+			pending: [{ pieceId: 'last', source: 'sir', restoreToSir: ['last'] }]
 		});
 	});
 
@@ -655,7 +657,8 @@ describe('takeAtu', () => {
 		expect(after.turnState).toEqual({
 			hasDrawn: true,
 			drawnFrom: 'atu',
-			mustUsePieceIds: ['atu9']
+			mustUsePieceIds: ['atu9'],
+			pending: [{ pieceId: 'atu9', source: 'atu', restoreToSir: [] }]
 		});
 	});
 
@@ -706,7 +709,8 @@ describe('breakSir', () => {
 		expect(result.turnState).toEqual({
 			hasDrawn: true,
 			drawnFrom: 'sir',
-			mustUsePieceIds: ['broken5']
+			mustUsePieceIds: ['broken5'],
+			pending: [{ pieceId: 'broken5', source: 'sir', restoreToSir: ['broken5', 'after7'] }]
 		});
 		expect(result.revision).toBe(withSirState.revision + 1);
 	});
@@ -757,12 +761,16 @@ describe('breakSir', () => {
 		const state = withSir(etalat(), [dead, n('red', 5, 'broken5')]);
 		const broken = breakSir(state, 'broken5');
 
-		expect(() => discard(broken, 'broken5')).toThrow(REASON.mustUseTakenPiece);
-
 		const melded = meld(broken, 0, [
 			{ type: 'suite', pieces: [n('red', 4, 'r4'), n('red', 5, 'broken5'), n('red', 6, 'r6')] }
 		]);
 		expect(melded.turnState.mustUsePieceIds).toEqual([]);
+		expect(melded.turnState.pending).toEqual([]);
+
+		// Nothing to send back: the suffix stays on the rack where it was melded.
+		const after = discard(melded, 'red-9');
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['dead', 'red-9']);
+		expect(labels(after.players[0]?.rack ?? [])).not.toContain('broken5');
 	});
 });
 
@@ -1032,8 +1040,13 @@ describe('lipi', () => {
 describe('swapJoker', () => {
 	const theJoker = () => joker('the-joker');
 
-	function swapState(rack0: Piece[], meldPieces: Piece[], type: FormationType) {
-		const state = playing([[...rack0], [n('black', 9, 'x')]], [], { turnNumber: 4 });
+	function swapState(
+		rack0: Piece[],
+		meldPieces: Piece[],
+		type: FormationType,
+		stock: Piece[] = []
+	) {
+		const state = playing([[...rack0], [n('black', 9, 'x')]], stock, { turnNumber: 4 });
 		const players = [...state.players];
 		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3) };
 		return withMelds({ ...state, players }, [createFormation('m0', type, meldPieces, 0)]);
@@ -1055,11 +1068,16 @@ describe('swapJoker', () => {
 		expect(after.revision).toBe(state.revision + 1);
 	});
 
-	it('blocks the discard until the joker is used', () => {
-		const state = swapState([n('red', 6, 'r6'), n('blue', 3, 'b3')], jokerSuite(), 'suite');
-		const swapped = swapJoker(state, 0, 'm0', 'the-joker', 'r6');
+	it('leaves an unswappable joker on the rack when the turn ends unused', () => {
+		const state = swapState([n('red', 6, 'r6'), n('blue', 3, 'b3')], jokerSuite(), 'suite', [
+			n('black', 5, 'stock5')
+		]);
+		const swapped = swapJoker(drawStock(state), 0, 'm0', 'the-joker', 'r6');
 
-		expect(() => discard(swapped, 'b3')).toThrow(REASON.mustUseTakenPiece);
+		// The joker has no source to go back to, so it simply stays on the rack.
+		const after = discard(swapped, 'b3');
+		expect(labels(after.players[0]?.rack ?? [])).toContain('the-joker');
+		expect(after.currentPlayerIndex).toBe(1);
 	});
 
 	it('rejects a replacement of the wrong value', () => {
@@ -1193,7 +1211,89 @@ describe('discard', () => {
 		expect(() => discard({ ...drawn, players }, 'r3')).toThrow(REASON.peTablaNoDiscard);
 	});
 
-	it('blocks the discard until the taken piece is melded', () => {
+	it('puts an unused atu back on the table when the turn ends', () => {
+		const atu = n('black', 9, 'atu9');
+		const state = playing([[n('red', 3, 'r3'), n('red', 4, 'r4')], [n('black', 1, 'x')]], [], {
+			turnNumber: 3,
+			table: { melds: [], sir: [], stock: [], atu }
+		});
+
+		const drawn = takeAtu(state);
+		expect(drawn.table.atu).toBeNull();
+
+		const after = discard(drawn, 'r3');
+		expect(after.table.atu).toEqual(atu);
+		expect(labels(after.players[0]?.rack ?? [])).not.toContain('atu9');
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['r3']);
+		expect(after.currentPlayerIndex).toBe(1);
+	});
+
+	it('restores the whole suffix lifted by breaking the șir, in order', () => {
+		const dead = n('blue', 1, 'dead');
+		const broken = n('red', 5, 'broken5');
+		const after7 = n('red', 7, 'after7');
+		const after8 = n('black', 8, 'after8');
+		const state = withSir(
+			withRack(playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [], { turnNumber: 5 }), [
+				n('red', 4, 'r4'),
+				n('red', 6, 'r6'),
+				n('black', 9, 'spare')
+			]),
+			[dead, n('black', 4, 'before4'), broken, after7, after8]
+		);
+		const players = [...state.players];
+		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3) };
+		const melded = { ...state, players };
+
+		const lifted = breakSir(melded, 'broken5');
+		expect(lifted.table.sir.map((piece) => piece.id)).toEqual(['dead', 'before4']);
+
+		const after = discard(lifted, 'r4');
+		// The suffix comes back in its original order, below the discarded piece.
+		expect(after.table.sir.map((piece) => piece.id)).toEqual([
+			'dead',
+			'before4',
+			'broken5',
+			'after7',
+			'after8',
+			'r4'
+		]);
+		expect(labels(after.players[0]?.rack ?? [])).not.toContain('after8');
+	});
+
+	it('leaves the table alone on a plain discard', () => {
+		const top = n('blue', 2, 'top');
+		const state = playing([[n('red', 3, 'r3'), n('red', 4, 'r4')], [n('black', 9, 'x')]], [top]);
+
+		const after = discard(drawStock(state), 'r3');
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['r3']);
+		expect(after.table.atu).toBe(state.table.atu);
+		expect(after.players[0]?.rack.at(-1)).toEqual(top);
+	});
+
+	it('lets a taken piece that can never be melded be discarded', () => {
+		const dead = n('blue', 1, 'dead');
+		const taken = n('yellow', 9, 'taken');
+		const state = withSir(
+			playing([[n('red', 3, 'r3'), n('red', 4, 'r4')], [n('black', 9, 'x')]], [], {
+				turnNumber: 3
+			}),
+			[dead, taken]
+		);
+
+		// Round-1 style deadlock: the piece is pending but nothing can be melded.
+		const drawn = takeLastFromSir(state);
+		expect(drawn.turnState.mustUsePieceIds).toEqual(['taken']);
+
+		const after = discard(drawn, 'r3');
+		expect(after.currentPlayerIndex).toBe(1);
+		expect(after.turnState.mustUsePieceIds).toEqual([]);
+		// The taken piece went back to the șir, below the discarded one.
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['dead', 'taken', 'r3']);
+		expect(labels(after.players[0]?.rack ?? [])).not.toContain('taken');
+	});
+
+	it('still clears the pending set when the taken piece is melded', () => {
 		const dead = n('blue', 1, 'dead');
 		const taken = n('yellow', 9, 'taken');
 		const state = withRack(
@@ -1212,19 +1312,18 @@ describe('discard', () => {
 			]
 		);
 
-		const drawn = takeLastFromSir(state);
-		expect(() => discard(drawn, 'r3')).toThrow(REASON.mustUseTakenPiece);
-
-		const etalat = meld(drawn, 0, [
+		const etalat = meld(takeLastFromSir(state), 0, [
 			{ type: 'suite', pieces: suiteOf('red', 9, 13) },
 			{ type: 'terta', pieces: [n('red', 9, 'r9'), n('blue', 9, 'b9'), taken] }
 		]);
 		expect(etalat.players[0]?.melded).toBe(true);
 		expect(etalat.turnState.mustUsePieceIds).toEqual([]);
+		expect(etalat.turnState.pending).toEqual([]);
 
 		const after = discard(etalat, 'r3');
 		expect(after.currentPlayerIndex).toBe(1);
-		expect(after.turnState.mustUsePieceIds).toEqual([]);
+		// Melded, so nothing goes back on the șir.
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['dead', 'r3']);
 	});
 });
 
@@ -1264,7 +1363,8 @@ describe('one draw per turn', () => {
 		expect(drawn.turnState).toEqual({
 			hasDrawn: true,
 			drawnFrom: 'stock',
-			mustUsePieceIds: []
+			mustUsePieceIds: [],
+			pending: []
 		});
 
 		const next = nextTurn(drawn);
@@ -1543,14 +1643,90 @@ describe('close', () => {
 		expect(() => close(state, 'b')).toThrow(REASON.mustDiscardLast);
 	});
 
-	it('refuses while a taken piece is still unused', () => {
-		const state = closingGame([n('black', 9, 'a'), n('black', 7, 'loot')]);
-		expect(() =>
-			close(
-				{ ...state, turnState: { hasDrawn: true, drawnFrom: 'sir', mustUsePieceIds: ['loot'] } },
-				'a'
-			)
-		).toThrow(REASON.mustUseTakenPiece);
+	/** The taken piece is the only one on the rack — the last stranded edge (#14). */
+	function strandedState() {
+		const dead = n('blue', 1, 'dead');
+		const taken = n('red', 7, 'taken7');
+		const base = withSir(
+			withRack(playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [], { turnNumber: 5 }), []),
+			[dead, taken]
+		);
+		const takenState = takeLastFromSir(base);
+		expect(labels(takenState.players[0]?.rack ?? [])).toEqual(['taken7']);
+		return takenState;
+	}
+
+	it('undoes the take when the taken piece is the only one on the rack', () => {
+		const state = strandedState();
+		const after = discard(state, 'taken7');
+
+		expect(after.turnNumber).toBe(state.turnNumber + 1);
+		expect(after.currentPlayerIndex).toBe(1);
+		// Exactly the pre-take table: nothing new landed on the șir.
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['dead', 'taken7']);
+		expect(after.table.atu).toBe(state.table.atu);
+		expect(after.players[0]?.rack).toEqual([]);
+		expect(after.turnState.mustUsePieceIds).toEqual([]);
+	});
+
+	it('undoes an unused atu take when it is the only piece on the rack', () => {
+		const atu = n('black', 9, 'atu9');
+		const base = withRack(
+			playing([[n('red', 3, 'r3')], [n('black', 1, 'x')]], [], {
+				turnNumber: 5,
+				table: { melds: [], sir: [], stock: [], atu }
+			}),
+			[]
+		);
+		const takenState = takeAtu(base);
+		expect(labels(takenState.players[0]?.rack ?? [])).toEqual(['atu9']);
+
+		const after = discard(takenState, 'atu9');
+		expect(after.table.atu).toEqual(atu);
+		expect(after.table.sir).toEqual([]);
+		expect(after.players[0]?.rack).toEqual([]);
+		expect(after.currentPlayerIndex).toBe(1);
+	});
+
+	it('refuses to close while a taken piece is still unused, then lets the turn end', () => {
+		const state = strandedState();
+
+		// Not a deadlock: the pending piece goes back, leaving nothing to close with.
+		expect(() => close(state, 'taken7')).toThrow(REASON.mustDiscardLast);
+
+		const after = discard(state, 'taken7');
+		expect(after.turnNumber).toBe(state.turnNumber + 1);
+		expect(after.currentPlayerIndex).toBe(1);
+	});
+
+	it('closes with the normal piece once the pending one has been returned', () => {
+		const dead = n('blue', 1, 'dead');
+		const taken = n('red', 5, 'taken5');
+		const spare = n('black', 9, 'spare');
+		const terta = [n('red', 9, 'r9'), n('blue', 9, 'b9'), n('yellow', 9, 'y9')];
+		const state = withSir(
+			withRack(playing([[n('red', 3, 'r3')], [n('black', 1, 'x')]], [], { turnNumber: 4 }), [
+				spare,
+				...terta
+			]),
+			[dead, taken]
+		);
+		const players = [...state.players];
+		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3) };
+
+		const etalat = meld(takeLastFromSir({ ...state, players }), 0, [
+			{ type: 'terta', pieces: terta }
+		]);
+		expect(etalat.players[0]?.rack.map((piece) => piece.id)).toEqual(['spare', 'taken5']);
+		expect(etalat.turnState.mustUsePieceIds).toEqual(['taken5']);
+
+		const after = close(etalat, 'spare');
+		expect(after.phase).toBe('finished');
+		expect(after.players[0]?.rack).toEqual([]);
+		expect(after.table.sir.map((piece) => piece.id)).toEqual(['dead', 'taken5', 'spare']);
+		expect(after.closerIndex).toBe(0);
+		// melded terță 15 + closing 50
+		expect(after.scores).toEqual([65, -100]);
 	});
 
 	it('is never allowed for a pe-table player', () => {

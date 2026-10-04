@@ -8,7 +8,8 @@ import {
 	pingPlayer,
 	saveGameState,
 	resetStaleGameState,
-	createNextGame
+	createNextGame,
+	withRoomLock
 } from '$lib/server/roomService';
 import { createSession, verifySession, destroySession, sanitizeName } from '$lib/server/auth';
 import {
@@ -219,38 +220,47 @@ export async function PUT({ params, request }) {
 	if (!playerId || !sessionToken || !(await verifySession(playerId, sessionToken))) {
 		return json({ error: 'Unauthorized' }, { status: 403 });
 	}
-	const room = await getRoom(params.code);
-	if (!room) return json({ error: 'Room not found' }, { status: 404 });
-	if (!room.players.some((p) => p.id === playerId)) {
-		return json({ error: 'Not a player in this room' }, { status: 403 });
-	}
-	if (room.gameState && (room.gameState as GameState).schemaVersion !== 3) {
-		await resetStaleGameState(params.code);
-		return json({ error: 'state reset' }, { status: 409 });
-	}
-	const stored = room.gameState;
-	if (!stored) return json({ error: 'No game in progress' }, { status: 400 });
-	if (typeof baseRevision !== 'number' || baseRevision !== stored.revision) {
-		return json({ error: 'Revision mismatch', gameState: stored }, { status: 409 });
-	}
-	const typed = intent as RemiIntent | null;
-	if (!typed || typeof typed.kind !== 'string') {
-		return json({ error: 'intent required' }, { status: 400 });
-	}
-	const senderIndex = room.players.findIndex((p) => p.id === playerId);
-	if (
-		!ANY_MEMBER_INTENTS.has(typed.kind) &&
-		!OWN_SEAT_INTENTS.has(typed.kind) &&
-		senderIndex !== stored.currentPlayerIndex
-	) {
-		return json({ error: 'Not your turn' }, { status: 403 });
-	}
-	let next: GameState;
-	try {
-		next = applyIntent(stored, senderIndex, typed);
-	} catch (err) {
-		return json({ error: err instanceof Error ? err.message : 'Invalid intent' }, { status: 400 });
-	}
-	await saveGameState(params.code, next);
-	return json({ ok: true, revision: next.revision, gameState: next });
+	// Serialised per room: the read→validate→save below must run strictly one
+	// at a time, so two concurrent requests with the same `baseRevision` cannot
+	// both be accepted. The stored room is re-read inside the lock and
+	// `baseRevision` re-checked immediately before saving — first accepted wins.
+	return withRoomLock(params.code, async () => {
+		const room = await getRoom(params.code);
+		if (!room) return json({ error: 'Room not found' }, { status: 404 });
+		if (!room.players.some((p) => p.id === playerId)) {
+			return json({ error: 'Not a player in this room' }, { status: 403 });
+		}
+		if (room.gameState && (room.gameState as GameState).schemaVersion !== 3) {
+			await resetStaleGameState(params.code);
+			return json({ error: 'state reset' }, { status: 409 });
+		}
+		const stored = room.gameState;
+		if (!stored) return json({ error: 'No game in progress' }, { status: 400 });
+		if (typeof baseRevision !== 'number' || baseRevision !== stored.revision) {
+			return json({ error: 'Revision mismatch', gameState: stored }, { status: 409 });
+		}
+		const typed = intent as RemiIntent | null;
+		if (!typed || typeof typed.kind !== 'string') {
+			return json({ error: 'intent required' }, { status: 400 });
+		}
+		const senderIndex = room.players.findIndex((p) => p.id === playerId);
+		if (
+			!ANY_MEMBER_INTENTS.has(typed.kind) &&
+			!OWN_SEAT_INTENTS.has(typed.kind) &&
+			senderIndex !== stored.currentPlayerIndex
+		) {
+			return json({ error: 'Not your turn' }, { status: 403 });
+		}
+		let next: GameState;
+		try {
+			next = applyIntent(stored, senderIndex, typed);
+		} catch (err) {
+			return json(
+				{ error: err instanceof Error ? err.message : 'Invalid intent' },
+				{ status: 400 }
+			);
+		}
+		await saveGameState(params.code, next);
+		return json({ ok: true, revision: next.revision, gameState: next });
+	});
 }

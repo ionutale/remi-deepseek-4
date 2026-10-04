@@ -49,12 +49,33 @@ export type PlayerState = {
 	peTablaComplete: boolean;
 };
 
+/**
+ * A piece taken this turn that must be used in a formation before discarding.
+ * Interpretation #14: if the turn ends without using it, it goes back where it
+ * came from, so a player can never be locked out of ending their turn.
+ */
+export type PendingUse = {
+	pieceId: string;
+	/** Where it came from; `null` when there is nothing to send it back to. */
+	source: 'sir' | 'atu' | null;
+	/**
+	 * șir ids to put back, in their original order. A take-last returns the one
+	 * piece; a break-sir lifted a whole suffix, so all of it goes back.
+	 */
+	restoreToSir: string[];
+};
+
 /** Per-turn draw bookkeeping, reset by `nextTurn`. */
 export type TurnState = {
 	hasDrawn: boolean;
 	drawnFrom: 'stock' | 'sir' | 'atu' | null;
 	/** Ids taken from the șir / atu / received through a joker swap — must be melded before discarding. */
 	mustUsePieceIds: string[];
+	/**
+	 * Where each pending piece came from. Optional so hand-built states keep
+	 * compiling; when absent the safety valve simply leaves pieces on the rack.
+	 */
+	pending?: PendingUse[];
 };
 
 export type GameState = {

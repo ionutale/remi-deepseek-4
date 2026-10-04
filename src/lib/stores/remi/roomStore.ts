@@ -44,6 +44,91 @@ export const remiStatus = derived(remiRoom, ($room) => $room?.status ?? null);
 export const remiPlayers = derived(remiRoom, ($room) => $room?.players ?? []);
 
 const remiSessionToken = writable<string>('');
+
+/**
+ * The seat (`playerId` + `sessionToken`) is only held in memory, so a refresh,
+ * an HMR update or a deep link would otherwise lose it and a running room
+ * rejects a second join. The credentials are mirrored to `sessionStorage` (per
+ * tab) and reclaimed through `hydrateRemiRoom`.
+ */
+const SESSION_STORAGE_KEY = 'remi-etalat.session';
+
+export type RemiStoredSession = { playerId: string; sessionToken: string; code: string };
+
+/** `sessionStorage` is browser-only and can throw in private mode — always guard. */
+function readStoredSession(): RemiStoredSession | null {
+	if (typeof sessionStorage === 'undefined') return null;
+	try {
+		const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as Partial<RemiStoredSession>;
+		if (typeof parsed.playerId !== 'string' || !parsed.playerId) return null;
+		if (typeof parsed.code !== 'string' || !parsed.code) return null;
+		return {
+			playerId: parsed.playerId,
+			sessionToken: typeof parsed.sessionToken === 'string' ? parsed.sessionToken : '',
+			code: parsed.code.toUpperCase()
+		};
+	} catch {
+		return null;
+	}
+}
+
+function writeStoredSession(session: RemiStoredSession | null): void {
+	if (typeof sessionStorage === 'undefined') return;
+	try {
+		if (session) sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+		else sessionStorage.removeItem(SESSION_STORAGE_KEY);
+	} catch {
+		/* storage unavailable: the in-memory session keeps working */
+	}
+}
+
+/** Mirror the credentials currently held in memory under `code`. */
+function persistSession(code: string): void {
+	const playerId = get(remiPlayerId);
+	const sessionToken = get(remiSessionToken);
+	if (!playerId || !code) return;
+	writeStoredSession({ playerId, sessionToken, code: code.toUpperCase() });
+}
+
+/** The seat this tab may reclaim, or `null` when there is none. */
+export function getStoredRemiSession(): RemiStoredSession | null {
+	return readStoredSession();
+}
+
+/** Drop the persisted seat — only on an explicit leave or a vanished room. */
+export function forgetRemiSession(): void {
+	writeStoredSession(null);
+}
+
+// Restore the credentials at module load so intents can be sent as soon as the
+// room is back; `remiRoom` itself is filled by `hydrateRemiRoom` (SSR: no-op).
+const restoredRemiSession = readStoredSession();
+if (restoredRemiSession) {
+	remiPlayerId.set(restoredRemiSession.playerId);
+	remiSessionToken.set(restoredRemiSession.sessionToken);
+}
+
+/**
+ * Session accessors for consumers that must send the *joined room's*
+ * credentials but sit outside this module (e.g. `matchStore.recordResult`).
+ */
+export function getRemiSessionToken(): string {
+	return get(remiSessionToken);
+}
+
+/**
+ * Adopt a session minted elsewhere (matchmaking) as this client's room session.
+ * `code` is optional; without it the last stored room code is kept.
+ */
+export function setRemiSession(playerId: string, sessionToken: string, code?: string): void {
+	remiPlayerId.set(playerId);
+	remiSessionToken.set(sessionToken);
+	const target = (code ?? readStoredSession()?.code ?? '').toUpperCase();
+	if (target) writeStoredSession({ playerId, sessionToken, code: target });
+}
+
 const remiPlayerName = writable<string>('');
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -90,6 +175,53 @@ export function stopRemiPolling(): void {
 	pollCode = null;
 }
 
+/**
+ * Reclaims the seat held in `sessionStorage` for `code` without a join: fetch
+ * the room once (the `playerId` query keeps the seat pinged), adopt it and keep
+ * polling. Called on mount by the room page after a refresh/HMR/deep link or a
+ * quick-match navigation, all of which land here with an empty store.
+ *
+ * Failures stay graceful: the stored seat is dropped only when the room or the
+ * seat is provably gone (404 / not a member), never on a transient error.
+ */
+export async function hydrateRemiRoom(code: string): Promise<void> {
+	const target = code.toUpperCase();
+	const stored = readStoredSession();
+	if (!stored || stored.code.toUpperCase() !== target) return;
+	// `resetRemi()` cleared the in-memory credentials — adopt them back.
+	remiPlayerId.set(stored.playerId);
+	remiSessionToken.set(stored.sessionToken);
+	remiError.set(null);
+	remiConnectionLost.set(false);
+	try {
+		const res = await fetch(`/api/rooms/${target}?playerId=${encodeURIComponent(stored.playerId)}`);
+		if (res.status === 404) {
+			forgetRemiSession();
+			remiRoom.set(null);
+			remiError.set('Room not found');
+			return;
+		}
+		if (!res.ok) {
+			// 409/5xx: keep the seat, let the page fall back to its join card.
+			remiConnectionLost.set(true);
+			return;
+		}
+		const data = (await res.json()) as Room;
+		if (!data?.players?.some((player) => player.id === stored.playerId)) {
+			// The seat is gone (room restarted, player replaced): re-join by name.
+			forgetRemiSession();
+			remiRoom.set(null);
+			remiError.set('Not a player in this room');
+			return;
+		}
+		remiRoom.set(data);
+		startRemiPolling(target);
+	} catch (e) {
+		remiConnectionLost.set(true);
+		console.error('Remi room hydration failed:', e);
+	}
+}
+
 export async function joinRemiRoom(
 	code: string,
 	name: string
@@ -111,6 +243,7 @@ export async function joinRemiRoom(
 		if (data.sessionToken) remiSessionToken.set(data.sessionToken);
 		remiPlayerName.set(name);
 		if (data.room) remiRoom.set(data.room as Room);
+		persistSession(code);
 		startRemiPolling(code.toUpperCase());
 	}
 	return data;
@@ -134,6 +267,7 @@ export async function createRemiRoom(name: string, maxPlayers: number = 4) {
 		if (data.sessionToken) remiSessionToken.set(data.sessionToken);
 		remiPlayerName.set(name);
 		remiRoom.set(data);
+		persistSession(data.code);
 		startRemiPolling(data.code);
 	}
 	return data;
@@ -162,7 +296,10 @@ export async function startRemiGame(): Promise<void> {
 		}
 		remiError.set(message);
 		console.error('Failed to start remi game:', message);
+		return;
 	}
+	// The seat now spans a running game — keep it reclaimable across refreshes.
+	persistSession($room.code);
 }
 
 export async function leaveRemiRoom(): Promise<void> {
@@ -184,6 +321,11 @@ export async function leaveRemiRoom(): Promise<void> {
 	}
 	stopRemiPolling();
 	remiRoom.set(null);
+	// Leaving explicitly drops the persisted seat too (a mere `resetRemi()` does not).
+	forgetRemiSession();
+	remiPlayerId.set('');
+	remiSessionToken.set('');
+	remiPlayerName.set('');
 }
 
 /**
@@ -252,4 +394,6 @@ export function resetRemi(): void {
 	remiPlayerName.set('');
 	remiError.set(null);
 	remiConnectionLost.set(false);
+	// The persisted seat is deliberately kept: `resetRemi()` also runs on
+	// destroy/HMR, and the next mount reclaims the same seat via hydration.
 }

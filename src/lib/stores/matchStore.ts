@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { playerId as roomPlayerId, sessionToken } from './roomStore';
+import { remiPlayerId, getRemiSessionToken, setRemiSession } from './remi/roomStore';
 
 export const matchStatus = writable<'idle' | 'queued' | 'matched'>('idle');
 export const matchRoomCode = writable<string | null>(null);
@@ -34,8 +34,7 @@ export async function quickJoin(name: string): Promise<string | null> {
 	if (data.status === 'matched') {
 		matchStatus.set('matched');
 		matchRoomCode.set(data.roomCode);
-		roomPlayerId.set(data.playerId);
-		sessionToken.set(data.sessionToken);
+		setRemiSession(data.playerId, data.sessionToken, data.roomCode);
 		return data.roomCode;
 	}
 
@@ -55,8 +54,7 @@ export function startPolling(): void {
 				if (data.status === 'matched') {
 					matchStatus.set('matched');
 					matchRoomCode.set(data.roomCode);
-					roomPlayerId.set(currentPlayerId);
-					sessionToken.set(currentSessionToken);
+					setRemiSession(currentPlayerId, currentSessionToken, data.roomCode);
 					stopPolling();
 				}
 				if (data.queueSize != null) matchQueueSize.set(data.queueSize);
@@ -97,7 +95,11 @@ export async function recordResult(
 	const res = await fetch('/api/matchmaking/result', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ roomCode, playerId: get(roomPlayerId), sessionToken: get(sessionToken) })
+		body: JSON.stringify({
+			roomCode,
+			playerId: get(remiPlayerId),
+			sessionToken: getRemiSessionToken()
+		})
 	});
 	if (res.ok) return res.json();
 	return null;

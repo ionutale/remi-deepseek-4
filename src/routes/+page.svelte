@@ -2,8 +2,8 @@
 	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
-	import { createRoom, joinRoom } from '$lib/stores/roomStore';
-	import { startGame } from '$lib/stores/gameStore';
+	import { startSoloGame } from '$lib/stores/remi/soloStore';
+	import { createRemiRoom, joinRemiRoom, remiError } from '$lib/stores/remi/roomStore';
 	import {
 		quickJoin,
 		leaveQueue,
@@ -12,24 +12,40 @@
 		matchQueueSize,
 		matchMMR
 	} from '$lib/stores/matchStore';
-	import type { RoomSummary } from '$lib/server/roomService';
+	import Piece from '$lib/components/remi/Piece.svelte';
+	import type { Piece as PieceType } from '$lib/engine/remi/types';
 
 	const COUNTS: readonly (2 | 3 | 4)[] = [2, 3, 4];
 
-	// Decorative hero table scene — pure CSS cards, no dependency on the game components.
-	const FAN = [
-		{ rank: 'K', suit: '♣', x: -86, y: 12, r: -25 },
-		{ rank: 'A', suit: '♥', x: -44, y: 2, r: -12 },
-		{ rank: 'Q', suit: '♦', x: 0, y: -2, r: 0 },
-		{ rank: '9', suit: '♠', x: 44, y: 2, r: 12 },
-		{ rank: 'J', suit: '♥', x: 86, y: 12, r: 25 }
+	/**
+	 * Room summary as returned by `GET /api/rooms` — typed locally so this
+	 * page does not depend on server types.
+	 */
+	type RoomSummary = {
+		code: string;
+		status: 'waiting' | 'playing' | 'finished';
+		maxPlayers: number;
+		players: { id: string; name: string }[];
+	};
+
+	/** Hero motif: a terță (7 roșu, 7 galben, 7 albastru) fanned on the felt. */
+	const HERO_TILES: PieceType[] = [
+		{ id: 'hero-7-red', value: 7, color: 'red', isJoker: false },
+		{ id: 'hero-7-yellow', value: 7, color: 'yellow', isJoker: false },
+		{ id: 'hero-7-blue', value: 7, color: 'blue', isJoker: false }
+	];
+
+	const TILE_FAN = [
+		{ x: -46, r: -16 },
+		{ x: 0, r: 0 },
+		{ x: 46, r: 16 }
 	];
 
 	let tab = $state<'create' | 'join' | 'browse'>('create');
 	let name = $state('');
 	let code = $state('');
 	let maxPlayers = $state<2 | 3 | 4>(4);
-	let aiPlayerCount = $state<2 | 3 | 4>(2);
+	let playerCount = $state<2 | 3 | 4>(2);
 	let error = $state('');
 	let rooms = $state<RoomSummary[]>([]);
 	let loading = $state(false);
@@ -63,59 +79,59 @@
 		try {
 			const res = await fetch('/api/rooms');
 			if (res.ok) {
-				const all: RoomSummary[] = await res.json();
-				rooms = all;
+				rooms = (await res.json()) as RoomSummary[];
 			}
 		} catch {
-			/* ignore */
+			/* ignore — the list simply stays as-is */
 		}
 		loading = false;
 	}
 
 	function handlePlaySolo() {
 		error = '';
-		startGame({ playerCount: aiPlayerCount, humanPlayerIndex: 0 });
+		startSoloGame(playerCount);
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto('/game');
 	}
 
 	async function handleCreate() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			error = 'Introdu numele tău.';
 			return;
 		}
 		error = '';
-		const data = await createRoom(name.trim(), maxPlayers);
+		const data = await createRemiRoom(name.trim(), maxPlayers);
 		if (data.code) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${data.code}`);
 		} else {
-			error = data.error || 'Failed to create room';
+			error = data.error || 'Nu s-a putut crea camera.';
 		}
 	}
 
 	async function handleJoin() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			error = 'Introdu numele tău.';
 			return;
 		}
 		if (!code.trim()) {
-			error = 'Enter room code';
+			error = 'Introdu codul camerei.';
 			return;
 		}
 		error = '';
-		const data = await joinRoom(code.trim().toUpperCase(), name.trim());
+		const upper = code.trim().toUpperCase();
+		const data = await joinRemiRoom(upper, name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(`/room/${code.trim().toUpperCase()}`);
+			await goto(`/room/${upper}`);
 		} else {
-			error = data.error || 'Failed to join room';
+			error = data.error || 'Nu s-a putut intra în cameră.';
 		}
 	}
 
 	async function handleQuickMatch() {
 		if (!name.trim()) {
-			error = 'Enter your name';
+			error = 'Introdu numele tău.';
 			return;
 		}
 		error = '';
@@ -135,17 +151,23 @@
 
 	async function handleJoinRoom(roomCode: string) {
 		if (!name.trim()) {
-			error = 'Enter your name first';
+			error = 'Introdu mai întâi numele tău.';
 			return;
 		}
 		error = '';
-		const data = await joinRoom(roomCode, name.trim());
+		const data = await joinRemiRoom(roomCode, name.trim());
 		if (data.room) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/room/${roomCode}`);
 		} else {
-			error = data.error || 'Failed to join room';
+			error = data.error || 'Nu s-a putut intra în cameră.';
 		}
+	}
+
+	function statusLabel(status: string): string {
+		if (status === 'waiting') return 'în așteptare';
+		if (status === 'playing') return 'în joc';
+		return 'terminată';
 	}
 
 	function statusChip(status: string): string {
@@ -163,14 +185,14 @@
 			<span class="wordmark">REMI</span>
 			<span class="hairline w-10 self-center sm:w-20"></span>
 			<span class="text-[0.7rem] tracking-[0.32em] text-amber-100/60 uppercase"
-				>Romanian meld game</span
+				>Jocul clasic românesc</span
 			>
 		</header>
 
 		<div
 			class="grid flex-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,25rem)] lg:gap-10"
 		>
-			<!-- Hero: table scene + play vs AI -->
+			<!-- Hero: masa de joc + solo -->
 			<section class="flex flex-col gap-6">
 				<div class="scene" aria-hidden="true">
 					<div class="scene-glow"></div>
@@ -180,77 +202,106 @@
 						<div class="deck-card"></div>
 						<div class="deck-card"></div>
 					</div>
-					<div class="fan">
-						{#each FAN as c (c.rank + c.suit)}
-							<div class="fan-card" style="--x:{c.x}px; --y:{c.y}px; --r:{c.r}deg">
-								<span class="fan-rank">{c.rank}</span>
-								<span class="fan-suit">{c.suit}</span>
+					<div class="tile-fan">
+						{#each HERO_TILES as tile, i (tile.id)}
+							<div
+								class="tile-fan-item"
+								style="--x:{TILE_FAN[i]?.x ?? 0}px; --r:{TILE_FAN[i]?.r ?? 0}deg"
+							>
+								<Piece piece={tile} size="lg" disabled />
 							</div>
 						{/each}
-					</div>
-					<div class="token-row">
-						<span class="token"></span>
-						<span class="token"></span>
-						<span class="token"></span>
 					</div>
 				</div>
 
 				<div class="flex flex-col gap-5 sm:gap-6">
 					<div>
-						<h1 class="hero-title">Draw. Meld. Outplay.</h1>
+						<h1 class="hero-title">Remi Etalat</h1>
 						<p class="mt-2 max-w-md text-sm text-amber-50/70 sm:text-base">
-							Take a card, build valid sets and sequences, and close the round by declaring your
-							board. Sit down against the house AI — no account, no waiting.
+							Jocul clasic românesc cu piese de remi — 106 piese, 4 culori, 2 jokeri.
 						</p>
 					</div>
 
 					<div class="panel flex flex-col gap-5 glass p-5 sm:p-6">
 						<div class="flex items-center justify-between gap-3">
 							<h2 class="text-xs font-semibold tracking-[0.24em] text-amber-100/80 uppercase">
-								Play vs AI
+								Joacă împotriva calculatorului
 							</h2>
 							<span class="chip is-open">instant</span>
 						</div>
 
 						<div class="flex flex-col gap-2">
-							<span class="field-label" id="solo-count-label">Table size</span>
+							<span class="field-label" id="solo-count-label">Jucători</span>
 							<div class="segmented" role="group" aria-labelledby="solo-count-label">
 								{#each COUNTS as n (n)}
 									<button
 										type="button"
 										class="seg-item"
-										aria-pressed={aiPlayerCount === n}
-										onclick={() => (aiPlayerCount = n)}
+										aria-pressed={playerCount === n}
+										onclick={() => (playerCount = n)}
 									>
 										{n}
-										<span class="text-[0.65rem] opacity-70">players</span>
 									</button>
 								{/each}
 							</div>
 						</div>
 
 						<button type="button" class="btn-gold btn w-full" onclick={handlePlaySolo}>
-							Start game vs AI
+							Începe jocul
 						</button>
 						<p class="text-center text-xs text-amber-50/50">
-							You play seat 1. Deal, draw, meld, close.
+							Ocupi locul 1. Trage, etalează, închide.
 						</p>
 					</div>
 				</div>
 			</section>
 
-			<!-- Multiplayer panel -->
-			<section class="panel flex flex-col gap-5 glass p-5 sm:p-6" aria-label="Multiplayer">
+			<!-- Card multiplayer -->
+			<section class="panel flex flex-col gap-5 glass p-5 sm:p-6" aria-label="Joc online">
 				<div class="flex items-center justify-between gap-3">
 					<h2 class="text-xs font-semibold tracking-[0.24em] text-amber-100/80 uppercase">
-						Multiplayer
+						Joc online
 					</h2>
 					{#if $matchStatus !== 'idle'}
 						<span class="chip is-mmr">MMR {$matchMMR}</span>
 					{/if}
 				</div>
 
-				<div class="segmented" role="group" aria-label="Room action">
+				<div class="flex flex-col gap-2">
+					<label class="field-label" for="player-name">Numele tău</label>
+					<input
+						id="player-name"
+						type="text"
+						placeholder="Jucător"
+						maxlength={30}
+						autocomplete="off"
+						bind:value={name}
+					/>
+				</div>
+
+				{#if $matchStatus === 'queued'}
+					<div class="flex flex-col gap-2">
+						<button type="button" class="btn-gold is-pulsing btn w-full" disabled>
+							Se caută adversar… ({$matchQueueSize})
+						</button>
+						<button type="button" class="btn-quiet btn w-full" onclick={handleCancelQueue}>
+							Anulează
+						</button>
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="btn-quiet btn w-full"
+						onclick={handleQuickMatch}
+						disabled={!name.trim()}
+					>
+						Căutare adversar (1v1)
+					</button>
+				{/if}
+
+				<div class="hairline"></div>
+
+				<div class="segmented" role="group" aria-label="Acțiune cameră">
 					<button
 						type="button"
 						class="seg-item"
@@ -260,7 +311,7 @@
 							error = '';
 						}}
 					>
-						Create
+						Creează cameră
 					</button>
 					<button
 						type="button"
@@ -271,7 +322,7 @@
 							error = '';
 						}}
 					>
-						Join
+						Intră în cameră
 					</button>
 					<button
 						type="button"
@@ -282,47 +333,13 @@
 							error = '';
 						}}
 					>
-						Browse
+						Camere deschise
 					</button>
 				</div>
-
-				<div class="flex flex-col gap-2">
-					<label class="field-label" for="player-name">Your name</label>
-					<input
-						id="player-name"
-						type="text"
-						placeholder="Player"
-						maxlength={30}
-						autocomplete="off"
-						bind:value={name}
-					/>
-				</div>
-
-				{#if $matchStatus === 'queued'}
-					<div class="flex flex-col gap-2">
-						<button type="button" class="btn-gold is-pulsing btn w-full" disabled>
-							Searching… {$matchQueueSize} in queue
-						</button>
-						<button type="button" class="btn-quiet btn w-full" onclick={handleCancelQueue}>
-							Cancel
-						</button>
-					</div>
-				{:else}
-					<button
-						type="button"
-						class="btn-quiet btn w-full"
-						onclick={handleQuickMatch}
-						disabled={!name.trim()}
-					>
-						Quick Match (1v1)
-					</button>
-				{/if}
-
-				<div class="hairline"></div>
 
 				{#if tab === 'create'}
 					<div class="flex flex-col gap-2">
-						<span class="field-label" id="max-players-label">Max players</span>
+						<span class="field-label" id="max-players-label">Jucători max</span>
 						<div class="segmented" role="group" aria-labelledby="max-players-label">
 							{#each COUNTS as n (n)}
 								<button
@@ -337,11 +354,11 @@
 						</div>
 					</div>
 					<button type="button" class="btn-gold btn w-full" onclick={handleCreate}>
-						Create room
+						Creează cameră
 					</button>
 				{:else if tab === 'join'}
 					<div class="flex flex-col gap-2">
-						<label class="field-label" for="room-code">Room code</label>
+						<label class="field-label" for="room-code">Cod cameră</label>
 						<input
 							id="room-code"
 							type="text"
@@ -353,23 +370,23 @@
 						/>
 					</div>
 					<button type="button" class="btn-gold btn w-full" onclick={handleJoin}>
-						Join room
+						Intră în cameră
 					</button>
 				{:else}
 					<div class="flex flex-col gap-2">
 						<div class="flex items-center justify-between">
-							<span class="field-label">Open rooms</span>
+							<span class="field-label">Camere deschise</span>
 							<button
 								type="button"
 								class="btn-quiet btn btn-xs"
 								onclick={fetchRooms}
 								disabled={loading}
 							>
-								{loading ? 'Refreshing…' : 'Refresh'}
+								{loading ? 'Se reîmprospătează…' : 'Reîmprospătează'}
 							</button>
 						</div>
 						{#if rooms.length === 0}
-							<p class="py-6 text-center text-sm text-amber-50/45">No rooms available</p>
+							<p class="py-6 text-center text-sm text-amber-50/45">Nici o cameră disponibilă</p>
 						{:else}
 							<ul class="flex flex-col gap-2">
 								{#each rooms as r (r.code)}
@@ -378,9 +395,9 @@
 											<div class="flex flex-wrap items-center gap-2">
 												<span class="chip is-code">{r.code}</span>
 												<span class="text-xs text-amber-50/55"
-													>{r.players.length}/{r.maxPlayers} seats</span
+													>{r.players.length}/{r.maxPlayers} locuri</span
 												>
-												<span class="chip {statusChip(r.status)}">{r.status}</span>
+												<span class="chip {statusChip(r.status)}">{statusLabel(r.status)}</span>
 											</div>
 											<div class="flex flex-wrap gap-1">
 												{#each r.players as p (p.id)}
@@ -392,8 +409,9 @@
 											type="button"
 											class="btn {r.status === 'waiting' ? 'btn-gold btn-sm' : 'btn-quiet btn-sm'}"
 											onclick={() => handleJoinRoom(r.code)}
+											disabled={r.status !== 'waiting'}
 										>
-											{r.status === 'waiting' ? 'Join' : 'View'}
+											Intră
 										</button>
 									</li>
 								{/each}
@@ -402,14 +420,14 @@
 					</div>
 				{/if}
 
-				{#if error}
-					<p class="chip is-error" role="alert">{error}</p>
+				{#if error || $remiError}
+					<p class="chip is-error" role="alert">{error || $remiError}</p>
 				{/if}
 			</section>
 		</div>
 
 		<footer class="text-center text-xs text-amber-50/35">
-			Remi · draw one card, meld sets and sequences, close at 14 declared cards
+			Remi — trage o piesă, etalează suite și terțe, închide jocul.
 		</footer>
 	</div>
 </div>
@@ -521,48 +539,22 @@
 		box-shadow: inset 0 0 40px rgba(255, 233, 180, 0.06);
 	}
 
-	.fan {
+	/* Terță fan — three wooden tiles fanned over the felt */
+	.tile-fan {
 		position: relative;
-		--fan-scale: clamp(0.62, 0.2 + 17vw, 1);
-		transform: scale(var(--fan-scale));
 		height: 118px;
+		width: 100%;
 	}
 
-	.fan-card {
+	.tile-fan-item {
 		position: absolute;
 		top: 6px;
-		left: calc(50% - 39px);
-		width: 78px;
-		height: 108px;
-		transform: translateX(var(--x)) translateY(var(--y)) rotate(var(--r));
+		left: calc(50% + var(--x, 0px));
+		transform: translateX(-50%) rotate(var(--r, 0deg));
 		transform-origin: 50% 130%;
-		border-radius: 8px;
-		border: 1px solid rgba(120, 90, 40, 0.35);
-		background-image: linear-gradient(160deg, #fffdf6 0%, #f3ecdc 100%);
-		box-shadow:
-			0 14px 26px -12px rgba(0, 0, 0, 0.85),
-			inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 4px;
 	}
 
-	.fan-rank {
-		font-size: 1.05rem;
-		font-weight: 700;
-		line-height: 1;
-		color: #23301f;
-	}
-
-	.fan-suit {
-		font-size: 2rem;
-		line-height: 1;
-		color: #b03a2e;
-		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-	}
-
+	/* The grămadă (stock) waiting beside the fan */
 	.deck-stack {
 		position: absolute;
 		left: clamp(6%, 12%, 16%);
@@ -594,24 +586,6 @@
 
 	.deck-card:nth-child(3) {
 		transform: translate(0, 0);
-	}
-
-	.token-row {
-		position: absolute;
-		right: clamp(6%, 12%, 16%);
-		top: 18%;
-		display: flex;
-		gap: 6px;
-		transform: scale(clamp(0.7, 0.35 + 12vw, 1));
-	}
-
-	.token {
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		border: 1px solid rgba(255, 244, 214, 0.6);
-		background-image: radial-gradient(circle at 32% 28%, #fffdf4, #d9b45f 60%, #8d6520);
-		box-shadow: 0 6px 12px -8px rgba(0, 0, 0, 0.9);
 	}
 
 	/* — Controls — */
@@ -839,24 +813,16 @@
 			animation: breathe 7s ease-in-out infinite;
 		}
 
-		.fan-card {
+		.tile-fan-item {
 			animation: settle 0.7s cubic-bezier(0.2, 0.8, 0.25, 1) backwards;
 		}
 
-		.fan-card:nth-child(2) {
+		.tile-fan-item:nth-child(2) {
 			animation-delay: 0.07s;
 		}
 
-		.fan-card:nth-child(3) {
+		.tile-fan-item:nth-child(3) {
 			animation-delay: 0.14s;
-		}
-
-		.fan-card:nth-child(4) {
-			animation-delay: 0.21s;
-		}
-
-		.fan-card:nth-child(5) {
-			animation-delay: 0.28s;
 		}
 
 		.is-pulsing {
@@ -866,11 +832,11 @@
 
 	@keyframes settle {
 		from {
-			transform: translateX(var(--x)) translateY(calc(var(--y) - 16px)) rotate(var(--r)) scale(0.9);
+			transform: translateX(-50%) translateY(calc(-16px)) rotate(var(--r, 0deg)) scale(0.9);
 			opacity: 0;
 		}
 		to {
-			transform: translateX(var(--x)) translateY(var(--y)) rotate(var(--r)) scale(1);
+			transform: translateX(-50%) translateY(0) rotate(var(--r, 0deg)) scale(1);
 			opacity: 1;
 		}
 	}

@@ -36,6 +36,39 @@ export interface RoomSummary {
 
 const col = () => roomsCol<Room>();
 
+/* ------------------------------------------------------------------ *
+ * Per-room mutation lock. The intent PUT is read→validate→save; without
+ * serialisation two concurrent requests with the same `baseRevision` can both
+ * read the stored room before either saves, so both get accepted. Every
+ * gameState mutator runs its critical section through `withRoomLock`, so a
+ * room's mutations run strictly one at a time and the first-accepted request
+ * wins. In-process only (single server instance, like the MMR guard below).
+ * ------------------------------------------------------------------ */
+
+const roomLocks = new Map<string, Promise<unknown>>();
+
+/**
+ * Runs `fn` exclusively for `code`. Calls are NOT re-entrant for the same
+ * room — never call a `withRoomLock`-wrapped mutator (or `saveGameState`
+ * callers that already hold the lock) from inside `fn`.
+ */
+export function withRoomLock<T>(code: string, fn: () => Promise<T>): Promise<T> {
+	const key = code.toUpperCase();
+	const prev = roomLocks.get(key) ?? Promise.resolve();
+	const task = prev.then(() => fn());
+	// The chain itself never rejects, so one failure cannot wedge later
+	// acquirers; the caller still sees `task` reject.
+	const tracked: Promise<unknown> = task.then(
+		() => undefined,
+		() => undefined
+	);
+	roomLocks.set(key, tracked);
+	tracked.finally(() => {
+		if (roomLocks.get(key) === tracked) roomLocks.delete(key);
+	});
+	return task;
+}
+
 export async function createRoom(
 	ownerName: string,
 	maxPlayers: number = 4,
@@ -82,16 +115,18 @@ export async function joinRoom(
 }
 
 export async function startGame(code: string, playerId: string): Promise<{ error?: string }> {
-	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode });
-	if (!room) return { error: 'Room not found' };
-	if (room.ownerId !== playerId) return { error: 'Only owner can start' };
-	if (room.players.length < 2) return { error: 'Need at least 2 players' };
+	return withRoomLock(code, async () => {
+		const roomCode = code.toUpperCase();
+		const room = await col().findOne({ code: roomCode });
+		if (!room) return { error: 'Room not found' };
+		if (room.ownerId !== playerId) return { error: 'Only owner can start' };
+		if (room.players.length < 2) return { error: 'Need at least 2 players' };
 
-	const next = createGame({ playerCount: room.players.length as 2 | 3 | 4 });
-	next.turnStartedAt = Date.now();
-	await col().updateOne({ code: roomCode }, { $set: { gameState: next, status: 'playing' } });
-	return {};
+		const next = createGame({ playerCount: room.players.length as 2 | 3 | 4 });
+		next.turnStartedAt = Date.now();
+		await col().updateOne({ code: roomCode }, { $set: { gameState: next, status: 'playing' } });
+		return {};
+	});
 }
 
 /**
@@ -109,20 +144,22 @@ export function createNextGame(prev: GameState): GameState {
 }
 
 export async function restartGame(code: string, playerId: string): Promise<{ error?: string }> {
-	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode });
-	if (!room) return { error: 'Room not found' };
-	if (room.ownerId !== playerId) return { error: 'Only owner can restart' };
-	if (room.status !== 'finished') return { error: 'Game not finished' };
-	if (!room.gameState || (room.gameState as GameState).schemaVersion !== 3) {
-		return { error: 'No finished game to continue' };
-	}
+	return withRoomLock(code, async () => {
+		const roomCode = code.toUpperCase();
+		const room = await col().findOne({ code: roomCode });
+		if (!room) return { error: 'Room not found' };
+		if (room.ownerId !== playerId) return { error: 'Only owner can restart' };
+		if (room.status !== 'finished') return { error: 'Game not finished' };
+		if (!room.gameState || (room.gameState as GameState).schemaVersion !== 3) {
+			return { error: 'No finished game to continue' };
+		}
 
-	await col().updateOne(
-		{ code: roomCode },
-		{ $set: { gameState: createNextGame(room.gameState), status: 'playing' } }
-	);
-	return {};
+		await col().updateOne(
+			{ code: roomCode },
+			{ $set: { gameState: createNextGame(room.gameState), status: 'playing' } }
+		);
+		return {};
+	});
 }
 
 export function statusForGameState(state: GameState): 'playing' | 'finished' {
@@ -277,31 +314,36 @@ export async function autoPlayExpiredTurns(now = Date.now()): Promise<void> {
 	const rooms = await col().find({ status: 'playing' }).toArray();
 
 	for (const room of rooms) {
-		const gs = room.gameState as GameState | null;
-		if (!gs || (gs as GameState).schemaVersion !== 3) continue;
-		if (gs.phase !== 'playing') continue;
-		if (now - gs.turnStartedAt <= TURN_TIMEOUT_MS) continue;
-		try {
-			let next: GameState;
+		// Serialised with intent PUTs: the tick must act on the latest stored
+		// state, never on a snapshot read while a player move is in flight.
+		await withRoomLock(room.code, async () => {
+			const fresh = await getRoom(room.code);
+			const gs = fresh?.gameState as GameState | null;
+			if (!gs || (gs as GameState).schemaVersion !== 3) return;
+			if (gs.phase !== 'playing') return;
+			if (now - gs.turnStartedAt <= TURN_TIMEOUT_MS) return;
 			try {
-				next = playTurn(gs);
-			} catch {
-				// `playTurn` may throw on an empty stock — the stock-out rule
-				// decides those games (spec §1.8), not the AI.
-				next = endByStockOut(gs);
-			}
-			if (next.revision === gs.revision) {
-				// No progress (e.g. the safe fallback with an empty stock).
-				if (gs.table.stock.length === 0) {
+				let next: GameState;
+				try {
+					next = playTurn(gs);
+				} catch {
+					// `playTurn` may throw on an empty stock — the stock-out rule
+					// decides those games (spec §1.8), not the AI.
 					next = endByStockOut(gs);
-				} else {
-					continue;
 				}
+				if (next.revision === gs.revision) {
+					// No progress (e.g. the safe fallback with an empty stock).
+					if (gs.table.stock.length === 0) {
+						next = endByStockOut(gs);
+					} else {
+						return;
+					}
+				}
+				await saveGameState(room.code, next);
+			} catch (err) {
+				console.error(`Room ${room.code}: auto-play failed`, err);
 			}
-			await saveGameState(room.code, next);
-		} catch (err) {
-			console.error(`Room ${room.code}: auto-play failed`, err);
-		}
+		});
 	}
 }
 export function startCleanupTimer(): void {

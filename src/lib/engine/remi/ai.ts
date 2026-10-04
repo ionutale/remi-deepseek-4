@@ -308,14 +308,10 @@ function meldPhase(s0: GameState): GameState {
 	const must = [...s.turnState.mustUsePieceIds];
 	const plan = greedyPlan(player.rack, must) ?? [];
 	const trimmed = trimPlan(player.rack, [...plan], must);
-	if (trimmed.length === 0 || !leavesDiscard(player.rack, trimmed)) {
-		if (must.length > 0) throw new Error('the taken piece cannot be melded');
-		return s;
-	}
-	if (!player.melded && !canOpenOk(trimmed)) {
-		if (must.length > 0) throw new Error('the taken piece cannot open the meld');
-		return s;
-	}
+	if (trimmed.length === 0 || !leavesDiscard(player.rack, trimmed)) return s;
+	// No legal meld: do not throw — the discard safety valve (#14) sends an
+	// unused taken piece back to its source, so the turn can still end.
+	if (!player.melded && !canOpenOk(trimmed)) return s;
 	return meld(s, idx, trimmed);
 }
 
@@ -445,7 +441,8 @@ function midTurn(s0: GameState): GameState {
 	}
 	const rack = me(s).rack;
 	if (rack.length === 0) throw new Error('an empty rack cannot end the turn');
-	if (s.turnState.mustUsePieceIds.length > 0) throw new Error('the taken piece was not used');
+	// An unused taken piece is not a failure: `discard` returns it to the șir or
+	// the atu (interpretation #14) and ends the turn anyway.
 	if (rack.length === 1) return close(s, (rack[0] as Piece).id);
 	return discard(s, chooseDiscardId(rack));
 }

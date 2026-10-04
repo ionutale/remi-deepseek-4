@@ -281,6 +281,36 @@ describe('ai turns', () => {
 		}
 	});
 
+	it('escapes a round-1 take-last that no meld can use', () => {
+		// Round 1 blocks melding entirely, so a piece taken from the șir can never
+		// be used in a formation: the turn must still end (interpretation #14).
+		let state = freshPlaying();
+		state = playTurn(state); // opening discard, turn 1 -> 2
+		const dead = state.table.sir[0] as Piece;
+		const taken = n('black', 12, 'round1-loot');
+		const takenState: GameState = {
+			...state,
+			table: { ...state.table, sir: [dead, taken] },
+			turnState: {
+				hasDrawn: true,
+				drawnFrom: 'sir',
+				mustUsePieceIds: ['round1-loot'],
+				pending: [{ pieceId: 'round1-loot', source: 'sir', restoreToSir: ['round1-loot'] }]
+			}
+		};
+		// Hand the piece to the player on turn so the state is physically consistent.
+		const withIt = withRack(takenState, 1, [...(state.players[1]?.rack ?? []), taken]);
+		expect(withIt.turnNumber).toBeLessThanOrEqual(2);
+
+		const after = playTurn(withIt);
+
+		expect(after.turnNumber).toBe(withIt.turnNumber + 1);
+		expect(after.currentPlayerIndex).toBe(0);
+		expect(after.table.sir.map((piece) => piece.id)).toContain('round1-loot');
+		expect(after.turnState.mustUsePieceIds).toEqual([]);
+		expect(collectIds(after)).toEqual(collectIds(withIt));
+	});
+
 	it('plays a turn well under 50 ms typical', () => {
 		const deck = shuffle(createDeck(), mulberry32(5));
 		let state = autoPlayPreGame(createGame({ playerCount: 4, deck }));

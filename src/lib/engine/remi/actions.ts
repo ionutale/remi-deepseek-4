@@ -32,8 +32,10 @@ import type {
 	FormationType,
 	GameState,
 	PatternType,
+	PendingUse,
 	Piece,
-	PlayerState
+	PlayerState,
+	TurnState
 } from './types';
 
 /** Exact, stable reason strings. The UI maps these to the Romanian copy deck (spec §4). */
@@ -112,6 +114,72 @@ function playerOf(state: GameState, index: number): PlayerState {
 }
 
 const ids = (pieces: Piece[]): string[] => pieces.map((piece) => piece.id);
+
+/** Turn state after a draw: `pending` and the flat id list are always built together. */
+function drawnTurn(from: 'stock' | 'sir' | 'atu', pending: PendingUse[] = []): TurnState {
+	return {
+		hasDrawn: true,
+		drawnFrom: from,
+		pending,
+		mustUsePieceIds: pending.map((p) => p.pieceId)
+	};
+}
+
+/** Drops the pending entries for pieces that were used in a formation. */
+function withoutPending(state: GameState, pieceIds: Iterable<string>): TurnState {
+	const used = new Set(pieceIds);
+	const pending = (state.turnState.pending ?? []).filter((entry) => !used.has(entry.pieceId));
+	return {
+		...state.turnState,
+		pending,
+		mustUsePieceIds: pending.map((entry) => entry.pieceId)
+	};
+}
+
+/**
+ * Interpretation #14 — the safety valve. Taken pieces that were never used in a
+ * formation go back where they came from, so a turn can always end even when no
+ * legal meld exists (round 1 blocks melding, the first meld needs 45 points plus
+ * a suită, or the piece simply does not fit anything).
+ *
+ * șir pieces are restored in their original order, so a break-sir suffix goes
+ * back exactly as it was lifted; the atu goes back on the table.
+ */
+function returnPendingPieces(state: GameState): {
+	rack: Piece[];
+	sir: Piece[];
+	atu: Piece | null;
+} {
+	const index = state.currentPlayerIndex;
+	const rack = playerOf(state, index).rack;
+	const pending = state.turnState.pending ?? [];
+	if (pending.length === 0) {
+		return { rack: [...rack], sir: [...state.table.sir], atu: state.table.atu };
+	}
+
+	const restored: string[] = [];
+	const returned = new Set<string>();
+	let atu: Piece | null = state.table.atu;
+
+	for (const entry of pending) {
+		if (entry.source === 'sir') {
+			restored.push(...entry.restoreToSir);
+			for (const id of entry.restoreToSir) returned.add(id);
+		} else if (entry.source === 'atu') {
+			returned.add(entry.pieceId);
+			atu = findPiece(rack, entry.pieceId) ?? state.table.atu;
+		}
+	}
+
+	const sir = [
+		...state.table.sir,
+		...restored
+			.map((id) => findPiece(rack, id))
+			.filter((piece): piece is Piece => piece !== undefined)
+	];
+
+	return { rack: removePieces(rack, returned), sir, atu };
+}
 
 /* ------------------------------------------------------------------ *
  * Setup / phases
@@ -353,7 +421,7 @@ export function drawStock(state: GameState): GameState {
 	return bump(state, {
 		players,
 		table: { ...state.table, stock: state.table.stock.slice(0, -1) },
-		turnState: { hasDrawn: true, drawnFrom: 'stock', mustUsePieceIds: [] }
+		turnState: drawnTurn('stock')
 	});
 }
 
@@ -373,11 +441,10 @@ export function takeLastFromSir(state: GameState): GameState {
 	return bump(state, {
 		players,
 		table: { ...state.table, sir },
-		turnState: {
-			hasDrawn: true,
-			drawnFrom: 'sir',
-			mustUsePieceIds: [...state.turnState.mustUsePieceIds, piece.id]
-		}
+		turnState: drawnTurn('sir', [
+			...(state.turnState.pending ?? []),
+			{ pieceId: piece.id, source: 'sir', restoreToSir: [piece.id] }
+		])
 	});
 }
 
@@ -394,11 +461,10 @@ export function takeAtu(state: GameState): GameState {
 	return bump(state, {
 		players,
 		table: { ...state.table, atu: null },
-		turnState: {
-			hasDrawn: true,
-			drawnFrom: 'atu',
-			mustUsePieceIds: [...state.turnState.mustUsePieceIds, atu.id]
-		}
+		turnState: drawnTurn('atu', [
+			...(state.turnState.pending ?? []),
+			{ pieceId: atu.id, source: 'atu', restoreToSir: [] }
+		])
 	});
 }
 
@@ -433,11 +499,10 @@ export function breakSir(state: GameState, pieceId: string): GameState {
 	return bump(state, {
 		players,
 		table: { ...state.table, sir },
-		turnState: {
-			hasDrawn: true,
-			drawnFrom: 'sir',
-			mustUsePieceIds: [...state.turnState.mustUsePieceIds, piece.id]
-		}
+		turnState: drawnTurn('sir', [
+			...(state.turnState.pending ?? []),
+			{ pieceId: piece.id, source: 'sir', restoreToSir: ids(taken) }
+		])
 	});
 }
 
@@ -504,10 +569,7 @@ export function meld(
 	return bump(state, {
 		players,
 		table: { ...state.table, melds },
-		turnState: {
-			...state.turnState,
-			mustUsePieceIds: state.turnState.mustUsePieceIds.filter((id) => !used.has(id))
-		}
+		turnState: withoutPending(state, used)
 	});
 }
 
@@ -555,10 +617,7 @@ export function lipi(
 	return bump(state, {
 		players,
 		table: { ...state.table, melds },
-		turnState: {
-			...state.turnState,
-			mustUsePieceIds: state.turnState.mustUsePieceIds.filter((id) => id !== piece.id)
-		}
+		turnState: withoutPending(state, [piece.id])
 	});
 }
 
@@ -653,6 +712,10 @@ export function swapJoker(
 		swappedJokerIds: [...state.swappedJokerIds, jokerPieceId],
 		turnState: {
 			...state.turnState,
+			pending: [
+				...(state.turnState.pending ?? []),
+				{ pieceId: jokerPieceId, source: null, restoreToSir: [] }
+			],
 			mustUsePieceIds: [...state.turnState.mustUsePieceIds, jokerPieceId]
 		}
 	});
@@ -675,21 +738,50 @@ function finalize(state: GameState, closerIdx: number | null, reason: EndReason)
 	});
 }
 
+/**
+ * Lays a piece on the șir and ends the turn. Pieces taken this turn and never
+ * used in a formation go back where they came from first (interpretation #14),
+ * so this action never fails because of an unusable taken piece.
+ *
+ * Choosing a piece that is itself pending undoes the take completely: everything
+ * goes back to its source and the turn passes with nothing discarded, which is
+ * the only way out when the taken piece is the last one on the rack.
+ */
 export function discard(state: GameState, pieceId: string): GameState {
 	requirePlaying(state);
-	const player = playerOf(state, state.currentPlayerIndex);
-	if (state.turnState.mustUsePieceIds.length > 0) throw new Error(REASON.mustUseTakenPiece);
+	const index = state.currentPlayerIndex;
+	const player = playerOf(state, index);
 	if (!state.turnState.hasDrawn) throw new Error(REASON.drawFirst);
 	if (player.peTabla) throw new Error(REASON.peTablaNoDiscard);
 
-	const piece = rackPiece(state, pieceId);
-	const index = state.currentPlayerIndex;
+	const pending = state.turnState.pending ?? [];
+	const pendingIds = new Set(
+		pending.length > 0 ? pending.map((entry) => entry.pieceId) : state.turnState.mustUsePieceIds
+	);
+
+	const returned = returnPendingPieces(state);
 	const players = [...state.players];
-	players[index] = { ...player, rack: removePieces(player.rack, [piece.id]) };
+
+	if (pendingIds.has(pieceId)) {
+		players[index] = { ...player, rack: returned.rack };
+		return endOfTurn(state, {
+			players,
+			table: { ...state.table, sir: returned.sir, atu: returned.atu }
+		});
+	}
+
+	const piece = findPiece(returned.rack, pieceId);
+	if (!piece) throw new Error(REASON.pieceNotInRack);
+	players[index] = { ...player, rack: removePieces(returned.rack, [piece.id]) };
 
 	return endOfTurn(state, {
 		players,
-		table: { ...state.table, sir: appendToSir(state.table.sir, piece) }
+		table: {
+			...state.table,
+			// Returned pieces first, so the discarded piece lands on top.
+			sir: appendToSir(returned.sir, piece),
+			atu: returned.atu
+		}
 	});
 }
 
@@ -762,17 +854,24 @@ function withComplete(playerIdx: number, state: GameState): PlayerState[] {
 /**
  * Closing the game: the current player discards their last rack piece, which is
  * the closing piece. Every other piece they hold is already on the table.
+ *
+ * A piece taken this turn and never used goes back to its source first
+ * (interpretation #14), so the closing piece is always a normal one. If that
+ * leaves anything other than a single piece, the close is refused — the player
+ * ends the turn with `discard` (which undoes the take if needed) and closes on a
+ * later turn.
  */
 export function close(state: GameState, pieceId: string): GameState {
 	requirePlaying(state);
-	if (state.turnState.mustUsePieceIds.length > 0) throw new Error(REASON.mustUseTakenPiece);
 
 	const index = state.currentPlayerIndex;
 	const player = playerOf(state, index);
 	if (player.peTabla) throw new Error(REASON.peTablaNoDiscard);
-	if (player.rack.length !== 1) throw new Error(REASON.mustDiscardLast);
 
-	const piece = findPiece(player.rack, pieceId);
+	const returned = returnPendingPieces(state);
+	if (returned.rack.length !== 1) throw new Error(REASON.mustDiscardLast);
+
+	const piece = findPiece(returned.rack, pieceId);
 	if (!piece) throw new Error(REASON.pieceNotInRack);
 
 	const players = [...state.players];
@@ -781,7 +880,11 @@ export function close(state: GameState, pieceId: string): GameState {
 	return finalize(
 		bump(state, {
 			players,
-			table: { ...state.table, sir: appendToSir(state.table.sir, piece) }
+			table: {
+				...state.table,
+				sir: appendToSir(returned.sir, piece),
+				atu: returned.atu
+			}
 		}),
 		index,
 		'close'

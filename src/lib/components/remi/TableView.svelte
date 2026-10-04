@@ -357,7 +357,7 @@
 			<h2 class="text-sm font-bold tracking-wider text-gold-200 uppercase">{myLabel}</h2>
 			{#if mustUse}
 				<p class="rounded-lg bg-amber-500/15 px-2 py-1.5 text-xs text-amber-200" role="note">
-					Folosește piesa luată într-o formație
+					Dacă nu folosești piesa luată, ea se întoarce în șir când arunci.
 				</p>
 			{/if}
 			{#if onmeld}
@@ -375,10 +375,8 @@
 					type="button"
 					class="btn border-rose-300/60 font-bold text-rose-100 btn-outline btn-sm hover:bg-rose-400/20 disabled:opacity-40"
 					onclick={() => selectedId && ondiscard(selectedId)}
-					disabled={!isMyTurn || !selectedId || mustUse}
-					title={mustUse
-						? 'Folosește piesa luată într-o formație'
-						: 'Alege o piesă din tablă, apoi aruncă'}
+					disabled={!isMyTurn || !selectedId}
+					title="Alege o piesă din tablă, apoi aruncă"
 				>
 					Aruncă{selectedId ? '' : ' · alege piesa'}
 				</button>
