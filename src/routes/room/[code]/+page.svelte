@@ -71,6 +71,7 @@
 		'Not your turn': 'Nu este rândul tău.',
 		'only the opening player can open the game':
 			'Doar jucătorul care deschide jocul poate face prima aruncare.',
+		'the opening turn is a discard only': 'Prima tură este doar o aruncare, fără tragere.',
 		'draw first': 'Trage întâi o piesă.',
 		'you already drew this turn': 'Ai tras deja o piesă în această tură.',
 		'stock is empty': 'Grămada este goală.',
@@ -100,6 +101,8 @@
 		// joker swap
 		'that joker is not in that meld': 'Acel joker nu mai este în formație.',
 		'that joker was already swapped': 'Acel joker a fost deja înlocuit o dată.',
+		'only the player who completed the terta can use the joker':
+			'Doar jucătorul care a completat terța poate folosi jokerul.',
 		'the joker cannot be used until the terta is completed':
 			'Jokerul poate fi folosit abia când terța este completă.',
 		'the replacement must be the exact piece the joker substitutes':
@@ -107,10 +110,12 @@
 		// aruncare / închidere
 		'you must use the taken piece in a formation this turn':
 			'Folosește piesa luată într-o formație înainte să arunci.',
+		'you must meld before you can close': 'Trebuie să etalezi înainte de a închide.',
 		'a pe tabla player does not discard': 'Un jucător pe tablă nu aruncă piese.',
 		'you can only close by discarding your last piece': 'Poți închide doar aruncând ultima piesă.',
 		// pe tablă
 		'you have already declared pe tabla': 'Ai declarat deja joc pe tablă.',
+		'unknown pattern': 'Model de joc necunoscut.',
 		'the pe tabla window has closed': 'Fereastra de declarare (primele 3 ture) s-a închis.',
 		'you cannot declare pe tabla after melding': 'Nu mai poți declara pe tablă după etalare.',
 		'you have not declared pe tabla': 'Nu ai declarat joc pe tablă.',
@@ -156,6 +161,7 @@
 		'replacementPieceId required': 'Alege piesa de înlocuire.',
 		'No room loaded': 'Camera nu este încărcată.',
 		'Game not finished': 'Jocul nu s-a terminat încă.',
+		'the game is not over yet': 'Jocul nu s-a terminat încă.',
 		'No winner': 'Nu există un câștigător.',
 		'Only 1v1 matches are rated': 'Doar meciurile 1 vs 1 sunt punctate.',
 		'Result not recorded': 'Rezultatul nu a putut fi înregistrat.',
@@ -214,11 +220,16 @@
 				const seat = state.players[index];
 				return {
 					name: player.name,
-					pieceCount: seat?.rack.length ?? 0,
+					pieceCount: seat?.rackCount ?? seat?.rack.length ?? 0,
 					isActive: state.currentPlayerIndex === index && state.phase === 'playing',
 					announcedAtu: seat?.announcedAtu ?? false,
 					peTablaProgress:
-						seat?.peTabla != null ? validatePattern(seat.peTabla.pattern, seat.rack).progress : null
+						seat?.peTabla != null
+							? (seat.peTablaProgress ??
+								(seat.rack.length > 0
+									? validatePattern(seat.peTabla.pattern, seat.rack).progress
+									: null))
+							: null
 				};
 			});
 	});
@@ -251,7 +262,7 @@
 			return 'Ai luat o piesă: folosește-o într-o formație sau aruncă — dacă nu o folosești, se întoarce.';
 		if (!state.turnState.hasDrawn) return 'Trage o piesă: din grămadă, ultima din șir sau atuul.';
 		if (rack.length - mustUse.length === 1)
-			return 'Îți-a rămas o singură piesă — poți închide jocul.';
+			return 'Ți-a rămas o singură piesă — poți închide jocul.';
 		return 'Alege o piesă și etalează, lipește, aruncă sau închide.';
 	});
 
@@ -838,6 +849,7 @@
 				{myIndex}
 				playerNames={names}
 				offers={game.dubleOffers}
+				offered={game.dubleOffered ?? null}
 				onoffer={(pieceId) => void act({ kind: 'duble-offer', pieceId })}
 				onwithdraw={() => void act({ kind: 'duble-withdraw' })}
 				onstrica={() => void act({ kind: 'strica' })}
@@ -887,7 +899,7 @@
 		{rack}
 		melds={game.table.melds}
 		sir={game.table.sir}
-		stockCount={game.table.stock.length}
+		stockCount={game.stockCount ?? game.table.stock.length}
 		atu={game.table.atu}
 		phase="playing"
 		{isMyTurn}
@@ -913,7 +925,7 @@
 		onlipi={isMyTurn && (me?.melded ?? false) && selectedPiece ? handleLipi : undefined}
 		onswapjoker={isMyTurn && !me?.peTabla && swapTargets.length > 0 ? handleSwapJoker : undefined}
 		onbreaksir={canBreakSir && breakSirMode ? (pieceId) => (breakSirTarget = pieceId) : undefined}
-		onclose={isMyTurn && !me?.peTabla && rack.length - mustUse.length === 1
+		onclose={isMyTurn && !me?.peTabla && me?.melded && rack.length - mustUse.length === 1
 			? handleClose
 			: undefined}
 		onpeTabla={isMyTurn && !me?.peTabla && !me?.melded && (me?.turnsTaken ?? 9) < 3

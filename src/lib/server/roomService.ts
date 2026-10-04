@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { GameState } from '$lib/engine/remi/types';
 import { createGame, endByStockOut } from '$lib/engine/remi/actions';
+import { validatePattern } from '$lib/engine/remi/patterns';
 import { playTurn } from '$lib/engine/remi/ai';
 import { roomsCol } from './db';
 import { verifySession } from './auth';
@@ -24,13 +25,14 @@ export interface PlayerInRoom {
 
 /**
  * Browse-list projection: lobby metadata only, NEVER `gameState` (opponent
- * racks would otherwise leak to anyone listing rooms).
+ * racks would otherwise leak to anyone listing rooms) and NEVER player `id`s
+ * (seats are joinable by code; ids are seat credentials).
  */
 export interface RoomSummary {
 	code: string;
 	status: 'waiting' | 'playing' | 'finished';
 	maxPlayers: number;
-	players: { id?: string; name: string; lastSeen?: number }[];
+	players: { name: string }[];
 	createdAt: number;
 }
 
@@ -187,15 +189,6 @@ export async function resetStaleGameState(code: string): Promise<void> {
 	);
 }
 
-export async function updateGameState(code: string, state: GameState): Promise<{ error?: string }> {
-	const roomCode = code.toUpperCase();
-	const room = await col().findOne({ code: roomCode });
-	if (!room) return { error: 'Room not found' };
-
-	await saveGameState(roomCode, state);
-	return {};
-}
-
 /* ------------------------------------------------------------------ *
  * MMR — recorded once per finished game (1v1 only), keyed per game.
  * ------------------------------------------------------------------ */
@@ -263,13 +256,55 @@ export async function getAllRooms(): Promise<RoomSummary[]> {
 		code: room.code,
 		status: room.status,
 		maxPlayers: room.maxPlayers,
-		players: (room.players as PlayerInRoom[]).map((p) => ({
-			id: p.id,
-			name: p.name,
-			lastSeen: p.lastSeen
-		})),
+		players: (room.players as PlayerInRoom[]).map((p) => ({ name: p.name })),
 		createdAt: room.createdAt
 	}));
+}
+
+/**
+ * Per-seat game-state projection (privacy gate C1).
+ *
+ * The stored state keeps every rack, the full stock order and the duble offer
+ * pieces; none of that may reach a client that must not see it. Every endpoint
+ * returning a room with a gameState projects through here for `viewerId`:
+ * - the viewer's own `players[i].rack` is kept whole; every other seat gets
+ *   `rack: []` plus `rackCount` (the true length);
+ * - `table.stock` is emptied, with the true length in top-level `stockCount`;
+ * - opponents' `dubleOffers` entries become `null` (the viewer's own offer
+ *   piece is kept); `dubleOffered` mirrors who offered, so the UI can render
+ *   "a oferit / așteaptă" without values;
+ * - `peTablaProgress` is computed server-side from each real rack via
+ *   `validatePattern`, so the UI never needs opponents' tiles.
+ *
+ * A `viewerId` that is not a room member (spectator / absent) sees no rack and
+ * no offer values at all — only counts and wait-state booleans.
+ */
+export function projectRoomFor(room: Room, viewerId: string | null | undefined): Room {
+	const gs = room.gameState as GameState | null;
+	if (!gs || gs.schemaVersion !== 3) return room;
+	const viewerIndex = viewerId ? room.players.findIndex((p) => p.id === viewerId) : -1;
+	const stockCount = gs.table.stock.length;
+	const dubleOffered = gs.dubleOffers.map((offer) => offer !== null);
+	const players = gs.players.map((player, index) => {
+		const isViewer = index === viewerIndex;
+		const rackCount = player.rack.length;
+		const peTablaProgress =
+			player.peTabla != null ? validatePattern(player.peTabla.pattern, player.rack).progress : null;
+		if (isViewer) {
+			return { ...player, rackCount, peTablaProgress };
+		}
+		return { ...player, rack: [], rackCount, peTablaProgress };
+	});
+	const dubleOffers = gs.dubleOffers.map((offer, index) => (index === viewerIndex ? offer : null));
+	const projected: GameState = {
+		...gs,
+		players,
+		table: { ...gs.table, stock: [] },
+		dubleOffers,
+		dubleOffered,
+		stockCount
+	};
+	return { ...room, gameState: projected };
 }
 
 const STALE_TIMEOUT_MS = 30_000;

@@ -150,13 +150,15 @@ async function joinSeat(page: Page, code: string, name: string): Promise<Credent
 	return body;
 }
 
-/** The slice of the room state these specs read. */
+/** The slice of the room state these specs read (projected per seat — see `projectRoomFor`). */
 interface GameState {
 	phase: string;
 	currentPlayerIndex: number;
 	turnNumber: number;
 	revision: number;
-	players: { rack: { id: string }[] }[];
+	stockCount?: number;
+	dubleOffered?: boolean[];
+	players: { rack: { id: string }[]; rackCount?: number; peTablaProgress?: number | null }[];
 }
 interface Credentials {
 	playerId: string;
@@ -356,13 +358,17 @@ test.describe('Remi Etalat', () => {
 			timeout: 15_000
 		});
 
-		// Both turns are persisted server-side, not just rendered.
+		// Both turns are persisted server-side, not just rendered. Racks are
+		// projected per seat (opponent tiles never leave the server), so the
+		// unauthenticated read asserts counts, never contents.
 		const roomRes = await alice.request.get(`/api/rooms/${code}`);
 		expect(roomRes.ok()).toBeTruthy();
 		const { gameState } = (await roomRes.json()) as { gameState: GameState };
 		expect(gameState.phase).toBe('playing');
 		expect(gameState.currentPlayerIndex).toBe(0);
-		expect(gameState.players.map((player) => player.rack.length)).toEqual([14, 14]);
+		expect(gameState.players.map((player) => player.rackCount ?? player.rack.length)).toEqual([
+			14, 14
+		]);
 
 		await aliceCtx.close();
 		await bobCtx.close();
@@ -446,6 +452,10 @@ test.describe('Remi Etalat', () => {
 			page.request.put(`/api/rooms/${code}`, {
 				data: { ...creds, baseRevision, intent: { kind } }
 			});
+		const putIntent = (creds: Credentials, baseRevision: number, intent: Record<string, unknown>) =>
+			page.request.put(`/api/rooms/${code}`, {
+				data: { ...creds, baseRevision, intent }
+			});
 
 		const dealt = (await (await page.request.get(`/api/rooms/${code}`)).json()) as {
 			gameState: GameState;
@@ -478,17 +488,26 @@ test.describe('Remi Etalat', () => {
 		expect(staleBody.error).toBe('Revision mismatch');
 		expect(staleBody.gameState.revision).toBe(playing.revision);
 
-		// The rejected intents left the state untouched, and the seat owner with the
-		// current revision still gets through.
-		const ok = await put(alice, playing.revision, 'draw-stock');
+		// The rejected intents left the state untouched. Turn 1 is a discard-only
+		// opening (no draw), so the seat owner closes it with an opening-discard
+		// of one of their own pieces (read through their own projected seat).
+		const seat = (await (
+			await page.request.get(`/api/rooms/${code}?playerId=${alice.playerId}`)
+		).json()) as { gameState: GameState };
+		const pieceId = seat.gameState.players[0]!.rack[0]!.id;
+		const ok = await putIntent(alice, playing.revision, {
+			kind: 'opening-discard',
+			pieceId
+		});
 		expect(ok.ok()).toBeTruthy();
 		const after = (await (await page.request.get(`/api/rooms/${code}`)).json()) as {
 			gameState: GameState;
 		};
 		expect(after.gameState.revision).toBeGreaterThan(playing.revision);
-		expect(after.gameState.players[0]!.rack).toHaveLength(16);
+		expect(after.gameState.players.map((p) => p.rackCount ?? p.rack.length)).toEqual([14, 14]);
 
-		// A 403 is an ownership failure, not a revision failure: the revision is intact.
-		expect(after.gameState.turnNumber).toBe(1);
+		// A 403 is an ownership failure, not a revision failure: the turn passed.
+		expect(after.gameState.turnNumber).toBe(2);
+		expect(after.gameState.currentPlayerIndex).toBe(1);
 	});
 });

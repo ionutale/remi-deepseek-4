@@ -1,9 +1,10 @@
 /**
  * Remi Etalat — engine types (schemaVersion 3).
  *
- * Deliberately separate from `src/lib/engine/types.ts`: the shipped close-mode
- * engine is frozen and keeps its own `Card`/`Meld` shapes. Nothing in the new
- * engine imports the old one.
+ * The rules of record are the Remi Etalat deck, not the previous game: every
+ * type below belongs to this engine alone. `src/lib/engine/types.ts` belongs to
+ * the older close-mode implementation, which is still in the tree, so the two
+ * engines deliberately share no types and nothing in here imports from it.
  */
 
 import type { PlayerBreakdown } from './scoring';
@@ -30,6 +31,12 @@ export type Formation = {
 	owner: number;
 	/** Parallel to `pieces`: null = original, else the index of the player who lipește it. */
 	lipitBy: (number | null)[];
+	/**
+	 * Terță only: who completed it by adding the last piece. Only that player may
+	 * use (swap) a joker that finished the terță — ropet: "jucătorul care lipește
+	 * a patra piesă poate folosi joly-ul" (spec §1.6).
+	 */
+	tertaCompleter?: number | null;
 };
 
 export type PatternType = 'simplu' | 'bete' | 'mozaic' | 'bicolor' | 'duble' | 'monocolor';
@@ -47,6 +54,17 @@ export type PlayerState = {
 	announcedAtu: boolean;
 	peTabla: { pattern: PatternType; declaredTurn: number } | null;
 	peTablaComplete: boolean;
+	/**
+	 * Server projection only (`projectRoomFor`): the true rack length. Opponent
+	 * racks arrive emptied, so the UI reads `rackCount ?? rack.length`.
+	 */
+	rackCount?: number;
+	/**
+	 * Server projection only (`projectRoomFor`): `validatePattern` progress
+	 * computed from the real rack. Lets the UI show opponents' pe-tablă
+	 * progress without ever receiving their tiles.
+	 */
+	peTablaProgress?: number | null;
 };
 
 /**
@@ -92,6 +110,18 @@ export type GameState = {
 	};
 	/** Pre-game blind exchange slots, parallel to `players`. */
 	dubleOffers: (Piece | null)[];
+	/**
+	 * Server projection only (`projectRoomFor`): per-seat "has offered",
+	 * parallel to `dubleOffers`. Opponent offer pieces arrive nulled, so the
+	 * UI reads wait-state from here without learning values.
+	 */
+	dubleOffered?: boolean[];
+	/**
+	 * Server projection only (`projectRoomFor`): the true stock length. The
+	 * projected `table.stock` arrives emptied, so the UI reads
+	 * `stockCount ?? table.stock.length`.
+	 */
+	stockCount?: number;
 	/** Reset at the start of every turn. */
 	turnState: TurnState;
 	/** Jokers already swapped once — a joker is played, swapped and reused at most. */

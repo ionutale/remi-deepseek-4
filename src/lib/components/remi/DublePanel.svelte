@@ -7,6 +7,7 @@
 		myIndex,
 		playerNames,
 		offers,
+		offered = null,
 		onoffer,
 		onwithdraw,
 		onstrica,
@@ -16,6 +17,8 @@
 		myIndex: number;
 		playerNames: string[];
 		offers: (Piece | null)[];
+		/** Server-projected per-seat wait-state; opponent `offers` arrive nulled. */
+		offered?: boolean[] | null;
 		onoffer: (pieceId: string) => void;
 		onwithdraw: () => void;
 		onstrica: () => void;
@@ -73,17 +76,18 @@
 		return offeredIds.has(d.a.id) || offeredIds.has(d.b.id);
 	}
 
-	/** Seats with the category of their offer — values are never revealed. */
+	/** Seats with offered/waiting state — opponent values stay hidden (only mine). */
 	let seats = $derived(
 		playerNames.map((name, index) => ({
 			name,
 			index,
 			isMe: index === myIndex,
-			offer: offers[index] ?? null
+			offer: offers[index] ?? null,
+			hasOffered: offered?.[index] ?? (offers[index] ?? null) !== null
 		}))
 	);
 
-	let anyOffer = $derived(seats.some((seat) => seat.offer !== null));
+	let anyOffer = $derived(seats.some((seat) => seat.hasOffered));
 </script>
 
 <section class="glass-panel min-w-0 rounded-2xl p-4" aria-label="Schimbul de duble">
@@ -177,8 +181,14 @@
 					<span class="font-bold text-cream-50">
 						{seat.name}{seat.isMe ? ' (tu)' : ''}
 					</span>
-					{#if seat.offer}
+					{#if seat.isMe && seat.offer}
 						<span class="text-cream-100/60">· {CAT_LABEL[categoryOf(seat.offer.value)]}</span>
+						<span
+							class="rounded bg-gold-400/25 px-1.5 py-0.5 text-[10px] font-black tracking-wider text-gold-200 uppercase"
+						>
+							ofertă
+						</span>
+					{:else if seat.hasOffered}
 						<span
 							class="rounded bg-gold-400/25 px-1.5 py-0.5 text-[10px] font-black tracking-wider text-gold-200 uppercase"
 						>

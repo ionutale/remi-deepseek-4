@@ -35,7 +35,7 @@ import {
 	type PieceFormation
 } from './formations';
 import { validatePattern, PATTERN_BONUS } from './patterns';
-import { COLORS } from './pieces';
+import { COLORS, firstDuble } from './pieces';
 import type { Color, Formation, GameState, PatternType, Piece } from './types';
 
 const PATTERNS: PatternType[] = ['simplu', 'bete', 'mozaic', 'bicolor', 'duble', 'monocolor'];
@@ -443,7 +443,9 @@ function midTurn(s0: GameState): GameState {
 	if (rack.length === 0) throw new Error('an empty rack cannot end the turn');
 	// An unused taken piece is not a failure: `discard` returns it to the șir or
 	// the atu (interpretation #14) and ends the turn anyway.
-	if (rack.length === 1) return close(s, (rack[0] as Piece).id);
+	// Closing needs an etalare (ropet), so a player who never melded keeps
+	// discarding until someone else closes or the grămadă runs out.
+	if (rack.length === 1 && me(s).melded) return close(s, (rack[0] as Piece).id);
 	return discard(s, chooseDiscardId(rack));
 }
 
@@ -576,21 +578,6 @@ export function playTurn(state: GameState): GameState {
 	} catch {
 		return safeFallback(state);
 	}
-}
-
-/** First held dublă (two identical naturals), deterministic by piece id. */
-function firstDuble(rack: Piece[]): Piece | null {
-	const ordered = [...rack].sort((a, b) => a.id.localeCompare(b.id));
-	for (const piece of ordered) {
-		if (piece.isJoker) continue;
-		if (
-			ordered.filter((p) => !p.isJoker && p.value === piece.value && p.color === piece.color)
-				.length >= 2
-		) {
-			return piece;
-		}
-	}
-	return null;
 }
 
 /**

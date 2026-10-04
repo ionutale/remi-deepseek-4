@@ -21,6 +21,7 @@ export const PATTERN_REASON = {
 	notArrangement: 'pieces cannot be arranged into valid formations',
 	wrongCount: (n: number) => `this pattern needs exactly ${n} pieces`,
 	noJokers: 'this pattern cannot use jokers',
+	jokerLimits: 'at most 2 jokers, and each must stand in for a missing twin',
 	beteShape: 'bete needs 2 terțe of 4 plus 2 terțe of 3',
 	mozaicValues: 'mozaic needs the values 1, 2, 3 ... 13, 1',
 	mozaicColours: 'mozaic colours do not fit the required layout',
@@ -30,6 +31,7 @@ export const PATTERN_REASON = {
 } as const;
 
 const RUN_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+const MAX_JOKERS = 2;
 
 function clamp01(value: number): number {
 	return Math.min(1, Math.max(0, value));
@@ -198,18 +200,34 @@ function validateMonocolor(pieces: Piece[]): PatternResult {
 	return best >= 14 ? valid(progress) : invalid(PATTERN_REASON.monocolorColours, progress);
 }
 
+/**
+ * Duble = 7 pairs of identical pieces. Jokers are allowed under the standard
+ * joker limits (interpretation #13: only Mozaic/Bicolor/Monocolor are
+ * natural-only): a joker stands in for the missing twin of a lone natural, so
+ * each joker needs its own single — two jokers are not an identical pair.
+ * With 14 pieces and at most 2 jokers the ">= 2 / >= 4 naturals" half of the
+ * joker rule can never fail here, so only the count limit is enforced.
+ */
 function validateDuble(pieces: Piece[]): PatternResult {
 	const counts = new Map<string, number>();
+	let jokers = 0;
 	for (const piece of pieces) {
-		if (piece.isJoker) continue;
+		if (piece.isJoker) {
+			jokers++;
+			continue;
+		}
 		const key = `${piece.color}-${piece.value}`;
 		counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
-	const pairs = [...counts.values()].reduce((sum, count) => sum + Math.floor(count / 2), 0);
-	const progress = (2 * pairs) / 14;
+
+	const groupSizes = [...counts.values()];
+	const naturalPairs = groupSizes.reduce((sum, count) => sum + Math.floor(count / 2), 0);
+	const singles = groupSizes.filter((count) => count % 2 === 1).length;
+	const pairs = naturalPairs + Math.min(jokers, singles);
+	const progress = (2 * Math.min(pairs, 7)) / 14;
 
 	if (pieces.length !== 14) return invalid(PATTERN_REASON.wrongCount(14), progress);
-	if (pieces.some((p) => p.isJoker)) return invalid(PATTERN_REASON.noJokers, progress);
+	if (jokers > MAX_JOKERS) return invalid(PATTERN_REASON.jokerLimits, progress);
 
 	return pairs === 7 ? valid(progress) : invalid(PATTERN_REASON.dublePairs, progress);
 }

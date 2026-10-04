@@ -25,7 +25,7 @@
 		code: string;
 		status: 'waiting' | 'playing' | 'finished';
 		maxPlayers: number;
-		players: { id: string; name: string }[];
+		players: { name: string }[];
 	};
 
 	/** Hero motif: a terță (7 roșu, 7 galben, 7 albastru) fanned on the felt. */
@@ -400,7 +400,7 @@
 												<span class="chip {statusChip(r.status)}">{statusLabel(r.status)}</span>
 											</div>
 											<div class="flex flex-wrap gap-1">
-												{#each r.players as p (p.id)}
+												{#each r.players as p, i (i)}
 													<span class="chip is-player">{p.name}</span>
 												{/each}
 											</div>

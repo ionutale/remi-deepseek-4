@@ -328,10 +328,36 @@ describe('validatePattern — duble', () => {
 		});
 	});
 
-	it('rejects jokers', () => {
-		expect(validatePattern('duble', [...pairs().slice(0, 13), j()])).toMatchObject({
+	it('lets a joker stand in for the missing twin of one pair', () => {
+		// 6 real pairs + one lone natural + one joker => 7 pairs (interpretation #13).
+		const board = [...pairs().slice(0, 12), p('red', 7), j()];
+		expect(board).toHaveLength(14);
+		expect(validatePattern('duble', board)).toEqual({ valid: true, progress: 1 });
+	});
+
+	it('lets two jokers complete two different pairs', () => {
+		const board = [...pairs().slice(0, 10), p('red', 6), p('red', 7), j(), j()];
+		expect(board).toHaveLength(14);
+		expect(validatePattern('duble', board)).toEqual({ valid: true, progress: 1 });
+	});
+
+	it('rejects jokers that have no lone natural to complete', () => {
+		// 12 naturals already make 6 whole pairs, so neither joker stands in for
+		// anything and the board is still one pair short.
+		const board = [...pairs().slice(0, 12), j(), j()];
+		expect(board).toHaveLength(14);
+		expect(validatePattern('duble', board)).toMatchObject({
 			valid: false,
-			reason: PATTERN_REASON.noJokers
+			reason: PATTERN_REASON.dublePairs
+		});
+	});
+
+	it('rejects more than two jokers', () => {
+		const board = [...pairs().slice(0, 11), j(), j(), j()];
+		expect(board).toHaveLength(14);
+		expect(validatePattern('duble', board)).toMatchObject({
+			valid: false,
+			reason: PATTERN_REASON.jokerLimits
 		});
 	});
 

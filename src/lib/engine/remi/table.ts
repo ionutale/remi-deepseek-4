@@ -8,6 +8,17 @@
 import { isSamePiece } from './pieces';
 import type { Formation, FormationType, GameState, Piece, TurnState } from './types';
 
+/** Ropet §1.5: a terță holds at most 4 pieces. */
+export const MAX_TERTA_SIZE = 4;
+
+/**
+ * A terță that reached 4 pieces while carrying a joker: the joker is now free to
+ * be used, and whoever added that last piece is the one allowed to swap it.
+ */
+export function completesJokerTerta(type: FormationType, pieces: Piece[]): boolean {
+	return type === 'terta' && pieces.length === MAX_TERTA_SIZE && pieces.some((p) => p.isJoker);
+}
+
 /** Reason strings raised by the șir helpers — single source, re-exported by `actions`. */
 export const TABLE_REASON = {
 	sirEmpty: 'the sir is empty',
@@ -104,7 +115,15 @@ export function createFormation(
 	pieces: Piece[],
 	owner: number
 ): Formation {
-	return { id, type, pieces: [...pieces], owner, lipitBy: pieces.map(() => null) };
+	return {
+		id,
+		type,
+		pieces: [...pieces],
+		owner,
+		lipitBy: pieces.map(() => null),
+		// Melded already complete: the melder is the one who may use the joker.
+		tertaCompleter: completesJokerTerta(type, pieces) ? owner : null
+	};
 }
 
 /* ------------------------------------------------------------------ *

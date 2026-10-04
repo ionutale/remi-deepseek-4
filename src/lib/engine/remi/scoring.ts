@@ -1,6 +1,6 @@
 import { finalPieceValue } from './formations';
 import { PATTERN_BONUS } from './patterns';
-import type { GameState } from './types';
+import type { GameState, Piece } from './types';
 
 export type PlayerBreakdown = {
 	/** Table formations owned by the player, minus anything someone lipit. */
@@ -25,15 +25,16 @@ export const NON_MELDER_PENALTY = -100;
  * End-of-game scoring (spec §1.9).
  *
  * `closerIndex` is the player who discarded the last piece, or null when the
- * stock ran out (nobody gets the closing bonus). The closing piece is the last
- * piece of the șir.
+ * stock ran out (nobody gets the closing bonus). `closingPiece` is that discard,
+ * passed explicitly instead of read off the șir: a pe-tablă player can close a
+ * board that covers their whole rack (interpretation #11) having discarded
+ * nothing, and that must not trigger the joker-close x2.
  */
 export function scoreGame(
 	state: GameState,
-	closerIndex: number | null
+	closerIndex: number | null,
+	closingPiece: Piece | null
 ): { scores: number[]; breakdowns: PlayerBreakdown[] } {
-	const sir = state.table.sir;
-	const closingPiece = closerIndex !== null && sir.length > 0 ? sir[sir.length - 1] : undefined;
 	const closerDiscardedJoker = closerIndex !== null && closingPiece?.isJoker === true;
 
 	const breakdowns: PlayerBreakdown[] = state.players.map((player, index) => {

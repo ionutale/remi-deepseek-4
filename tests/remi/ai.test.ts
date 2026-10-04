@@ -70,14 +70,39 @@ function collectIds(state: GameState): string[] {
 }
 
 describe('ai turns', () => {
+	it('never closes a player who never etalat', () => {
+		// ropet: closing means you etalat everything, so the AI keeps discarding.
+		let state = freshPlaying();
+		for (let i = 0; i < 8 && state.phase === 'playing'; i++) state = playTurn(state);
+		expect(state.phase).toBe('playing');
+
+		const players = state.players.map((p) => ({
+			...p,
+			melded: false,
+			rack: [n('black', 9, 'last-one')]
+		}));
+		const stranded: GameState = { ...state, players, turnNumber: 12 };
+		const after = playTurn(stranded);
+
+		expect(after.phase).toBe('playing');
+		expect(after.turnNumber).toBe(13);
+		// It drew and discarded instead of closing.
+		expect(after.players[0]?.rack).toHaveLength(1);
+		expect(after.players[0]?.melded).toBe(false);
+	});
+
 	it('plays the opening discard', () => {
 		let state = freshPlaying();
 		expect(state.turnNumber).toBe(1);
+		const stock = state.table.stock.length;
 		state = playTurn(state);
 		expect(state.table.sir.length).toBe(1);
 		expect(state.turnNumber).toBe(2);
 		expect(state.currentPlayerIndex).toBe(1);
 		expect(state.players[0]?.rack.length).toBe(14);
+		// Spec §1.4: the opener draws nothing, so the grămadă is untouched.
+		expect(state.table.stock.length).toBe(stock);
+		expect(state.players[0]?.turnsTaken).toBe(1);
 	});
 
 	it('draws and discards legally on a normal turn', () => {

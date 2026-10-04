@@ -170,9 +170,31 @@ describe('meld helpers', () => {
 			type: 'terta',
 			pieces,
 			owner: 1,
-			lipitBy: [null, null, null]
+			lipitBy: [null, null, null],
+			// No joker, so nobody is the terță's joker completer.
+			tertaCompleter: null
 		});
 		expect(meld.pieces).not.toBe(pieces);
+	});
+
+	it('makes the melder the joker completer of a finished terță', () => {
+		const meld = createFormation(
+			'm0',
+			'terta',
+			[n('red', 5), n('blue', 5), n('yellow', 5), joker()],
+			2
+		);
+		expect(meld.tertaCompleter).toBe(2);
+	});
+
+	it('leaves an unfinished joker terță without a completer', () => {
+		const meld = createFormation('m0', 'terta', [n('red', 5), n('blue', 5), joker()], 2);
+		expect(meld.tertaCompleter).toBeNull();
+	});
+
+	it('never marks a joker suită as completed', () => {
+		const meld = createFormation('m0', 'suite', [n('red', 4), n('red', 5), joker()], 1);
+		expect(meld.tertaCompleter).toBeNull();
 	});
 
 	it('mints ids after the existing ones', () => {

@@ -84,3 +84,17 @@ export function isSamePiece(a: Piece, b: Piece): boolean {
 	if (a.isJoker || b.isJoker) return false;
 	return a.value === b.value && a.color === b.color;
 }
+
+/** First held dublă (two identical naturals), deterministic by piece id. */
+export function firstDuble(rack: Piece[]): Piece | null {
+	const ordered = [...rack].sort((a, b) => a.id.localeCompare(b.id));
+	for (const piece of ordered) {
+		if (piece.isJoker) continue;
+		const twins = ordered.filter(
+			(candidate) =>
+				!candidate.isJoker && candidate.value === piece.value && candidate.color === piece.color
+		);
+		if (twins.length >= 2) return piece;
+	}
+	return null;
+}

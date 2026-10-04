@@ -9,6 +9,7 @@ import {
 	saveGameState,
 	resetStaleGameState,
 	createNextGame,
+	projectRoomFor,
 	withRoomLock
 } from '$lib/server/roomService';
 import { createSession, verifySession, destroySession, sanitizeName } from '$lib/server/auth';
@@ -43,11 +44,14 @@ export async function GET({ params, url }) {
 	if (room.gameState && (room.gameState as GameState).schemaVersion !== 3) {
 		await resetStaleGameState(params.code);
 		const refreshed = await getRoom(params.code);
-		return json(refreshed);
+		if (!refreshed) return json({ error: 'Room not found' }, { status: 404 });
+		const viewer = url.searchParams.get('playerId');
+		if (viewer) await pingPlayer(params.code, viewer);
+		return json(projectRoomFor(refreshed, viewer));
 	}
 	const playerId = url.searchParams.get('playerId');
 	if (playerId) await pingPlayer(params.code, playerId);
-	return json(room);
+	return json(projectRoomFor(room, playerId));
 }
 
 export async function PATCH({ params, request }) {
@@ -237,7 +241,8 @@ export async function PUT({ params, request }) {
 		const stored = room.gameState;
 		if (!stored) return json({ error: 'No game in progress' }, { status: 400 });
 		if (typeof baseRevision !== 'number' || baseRevision !== stored.revision) {
-			return json({ error: 'Revision mismatch', gameState: stored }, { status: 409 });
+			const projected = projectRoomFor({ ...room, gameState: stored }, playerId as string);
+			return json({ error: 'Revision mismatch', gameState: projected.gameState }, { status: 409 });
 		}
 		const typed = intent as RemiIntent | null;
 		if (!typed || typeof typed.kind !== 'string') {
@@ -261,6 +266,7 @@ export async function PUT({ params, request }) {
 			);
 		}
 		await saveGameState(params.code, next);
-		return json({ ok: true, revision: next.revision, gameState: next });
+		const projected = projectRoomFor({ ...room, gameState: next }, playerId as string);
+		return json({ ok: true, revision: next.revision, gameState: projected.gameState });
 	});
 }

@@ -111,6 +111,7 @@
 11. **Pe tablă turn rule pinned**: a pe-tablă player draws one piece per turn and is **not required to discard** — pieces accumulate in their private pattern until it is complete (this is what makes the 14–28-piece patterns reachable; ropet's "cel mult 14 piese" end-of-turn limit applies to normal etalat play only). If someone else closes first: −100.
 12. **Both jokers are identical** (the physical set has two identical smiley jokers), so no colour distinction exists in this game; the engine treats them as interchangeable.
 13. **Mozaic / Bicolor / Monocolor patterns are natural-only** (no jokers) — they are about colour layout; jokers are rejected there. Simplu/Bete/Duble may use jokers subject to the standard joker limits.
+14. **Must-use safety valve**: a taken șir/atu piece that cannot be used in a formation returns to its source when the player discards (the șir regains its suffix in order; the atu returns to its slot); if the taken piece itself is chosen as the discard, the take is fully undone and nothing new joins the șir. On close, still-pending pieces return first and the player closes with the piece that remains. Prevents digital soft-locks (ropet's strict reading would strand turns with no legal move).
 
 ---
 

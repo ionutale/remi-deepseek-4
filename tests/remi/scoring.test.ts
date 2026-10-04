@@ -64,6 +64,14 @@ function state(players: PlayerState[], overrides: Partial<GameState> = {}): Game
 	};
 }
 
+/**
+ * These fixtures lay the closer's discard on top of the șir, which is the piece
+ * `close` hands to `scoreGame`. A pe-tablă whole-rack close passes `null` — it
+ * discarded nothing (interpretation #11).
+ */
+const closingDiscard = (game: GameState): Piece | null =>
+	game.table.sir[game.table.sir.length - 1] ?? null;
+
 const suite = (color: Color, from: number, to: number) => {
 	const pieces: Piece[] = [];
 	for (let value = from; value <= to; value++) pieces.push(p(color, value));
@@ -82,7 +90,7 @@ describe('scoreGame — melders', () => {
 			}
 		});
 
-		const { scores, breakdowns } = scoreGame(game, 0);
+		const { scores, breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]).toEqual({
 			meldedPoints: 15,
 			lipitPoints: 0,
@@ -102,14 +110,14 @@ describe('scoreGame — melders', () => {
 			table: { melds: [meld('suite', suite('red', 5, 7), 0)], sir: [], stock: [], atu: null }
 		});
 
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.rackPenalty).toBe(-30);
 		expect(breakdowns[0]?.total).toBe(-15);
 	});
 
 	it('values a joker left on the rack at 50', () => {
 		const game = state([player({ rack: [j()] })]);
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.rackPenalty).toBe(-50);
 		expect(breakdowns[0]?.total).toBe(-50);
 	});
@@ -125,7 +133,7 @@ describe('scoreGame — melders', () => {
 			}
 		});
 
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.lipitPoints).toBe(5);
 		expect(breakdowns[0]?.meldedPoints).toBe(0);
 		expect(breakdowns[1]?.meldedPoints).toBe(10);
@@ -143,7 +151,7 @@ describe('scoreGame — melders', () => {
 			}
 		});
 
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.meldedPoints).toBe(10);
 		expect(breakdowns[0]?.lipitPoints).toBe(5);
 		expect(breakdowns[0]?.total).toBe(15);
@@ -161,7 +169,7 @@ describe('scoreGame — bonuses and penalties', () => {
 			}
 		});
 
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.closingBonus).toBe(0);
 		expect(breakdowns[0]?.total).toBe(15);
 	});
@@ -170,14 +178,14 @@ describe('scoreGame — bonuses and penalties', () => {
 		const game = state([player({ announcedAtu: true })], {
 			table: { melds: [meld('suite', suite('red', 5, 7), 0)], sir: [], stock: [], atu: null }
 		});
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.atuBonus).toBe(50);
 		expect(breakdowns[0]?.total).toBe(65);
 	});
 
 	it('flattens a non-melder at -100 without counting their rack', () => {
 		const game = state([player({ melded: false, rack: [p('red', 1), p('red', 13)] })]);
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.nonMelderPenalty).toBe(-100);
 		expect(breakdowns[0]?.rackPenalty).toBe(0);
 		expect(breakdowns[0]?.total).toBe(-100);
@@ -185,7 +193,7 @@ describe('scoreGame — bonuses and penalties', () => {
 
 	it('nets -50 for a non-melder who announced atu', () => {
 		const game = state([player({ melded: false, announcedAtu: true })]);
-		const { breakdowns } = scoreGame(game, null);
+		const { breakdowns } = scoreGame(game, null, null);
 		expect(breakdowns[0]?.total).toBe(-50);
 	});
 
@@ -193,7 +201,7 @@ describe('scoreGame — bonuses and penalties', () => {
 		const game = state([player({ melded: false })], {
 			table: { melds: [], sir: [p('blue', 4)], stock: [], atu: null }
 		});
-		const { breakdowns } = scoreGame(game, 0);
+		const { breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.closingBonus).toBe(0);
 		expect(breakdowns[0]?.total).toBe(-100);
 	});
@@ -208,7 +216,7 @@ describe('scoreGame — multipliers', () => {
 
 	it('doubles the closer total when the closing piece is a joker', () => {
 		const game = base({}, [j()]);
-		const { scores, breakdowns } = scoreGame(game, 0);
+		const { scores, breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.multiplier).toBe(2);
 		expect(breakdowns[0]?.total).toBe(130);
 		expect(breakdowns[1]?.multiplier).toBe(1);
@@ -217,21 +225,21 @@ describe('scoreGame — multipliers', () => {
 
 	it('doubles every score in a joc dublu', () => {
 		const game = base({ doubleGame: true });
-		const { scores, breakdowns } = scoreGame(game, 0);
+		const { scores, breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.multiplier).toBe(2);
 		expect(scores).toEqual([130, -200]);
 	});
 
 	it('multiplies by four on a joker close in a joc dublu', () => {
 		const game = base({ doubleGame: true }, [j()]);
-		const { scores, breakdowns } = scoreGame(game, 0);
+		const { scores, breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.multiplier).toBe(4);
 		expect(scores).toEqual([260, -200]);
 	});
 
 	it('ignores a joker that is not the closing piece', () => {
 		const game = base({}, [j(), p('blue', 4)]);
-		const { breakdowns } = scoreGame(game, 0);
+		const { breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.multiplier).toBe(1);
 	});
 });
@@ -250,7 +258,7 @@ describe('scoreGame — pe tablă', () => {
 		const game = state([board('monocolor'), player()], {
 			table: { melds: [], sir: [p('blue', 4)], stock: [], atu: null }
 		});
-		const { scores, breakdowns } = scoreGame(game, 0);
+		const { scores, breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.peTablaBonus).toBe(1500);
 		expect(breakdowns[0]?.rackPenalty).toBe(0);
 		expect(breakdowns[0]?.total).toBe(1500);
@@ -259,23 +267,48 @@ describe('scoreGame — pe tablă', () => {
 
 	it('adds the atu bonus to a completed board', () => {
 		const game = state([board('duble', { announcedAtu: true })]);
-		const { breakdowns } = scoreGame(game, 0);
+		const { breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.total).toBe(1350);
 	});
 
 	it('applies the joc dublu multiplier to the pattern bonus', () => {
 		const game = state([board('simplu')], { doubleGame: true });
-		const { breakdowns } = scoreGame(game, 0);
+		const { breakdowns } = scoreGame(game, 0, closingDiscard(game));
 		expect(breakdowns[0]?.multiplier).toBe(2);
 		expect(breakdowns[0]?.total).toBe(1000);
 	});
 
-	it('applies the joker close multiplier to a completed board', () => {
+	it('ignores a joker left on the șir by someone else', () => {
+		// Interpretation #11: a board covering the whole rack closes with no
+		// discard at all, so there is no closing piece and no x2.
 		const game = state([board('simplu')], {
 			table: { melds: [], sir: [j()], stock: [], atu: null }
 		});
-		const { breakdowns } = scoreGame(game, 0);
+		const { breakdowns } = scoreGame(game, 0, null);
+		expect(breakdowns[0]?.multiplier).toBe(1);
+		expect(breakdowns[0]?.total).toBe(500);
+	});
+
+	it('doubles a completed board closed by discarding a joker', () => {
+		const outside = j();
+		const game = state([board('simplu')], {
+			table: { melds: [], sir: [outside], stock: [], atu: null }
+		});
+		const { breakdowns } = scoreGame(game, 0, outside);
+		expect(breakdowns[0]?.multiplier).toBe(2);
 		expect(breakdowns[0]?.total).toBe(1000);
+	});
+
+	it('doubles a board closed by a joker in a joc dublu', () => {
+		const outside = j();
+		const game = state([board('simplu', { announcedAtu: true })], {
+			table: { melds: [], sir: [outside], stock: [], atu: null },
+			doubleGame: true
+		});
+		const { breakdowns } = scoreGame(game, 0, outside);
+		expect(breakdowns[0]?.multiplier).toBe(4);
+		// (500 pattern + 50 atu) x 4
+		expect(breakdowns[0]?.total).toBe(2200);
 	});
 
 	it('flattens a declared but incomplete board at -100', () => {
@@ -283,7 +316,7 @@ describe('scoreGame — pe tablă', () => {
 			[player({ melded: false, peTabla: { pattern: 'bete', declaredTurn: 2 } }), player()],
 			{ table: { melds: [], sir: [p('blue', 4)], stock: [], atu: null } }
 		);
-		const { breakdowns } = scoreGame(game, 1);
+		const { breakdowns } = scoreGame(game, 1, closingDiscard(game));
 		expect(breakdowns[0]?.peTablaBonus).toBe(0);
 		expect(breakdowns[0]?.nonMelderPenalty).toBe(-100);
 		expect(breakdowns[0]?.total).toBe(-100);

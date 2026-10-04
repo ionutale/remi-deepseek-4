@@ -22,10 +22,11 @@ import {
 	soloResolveDuble,
 	soloStartPlaying,
 	soloState,
+	soloStrica,
 	startSoloGame
 } from '$lib/stores/remi/soloStore';
 import { createGame, resolveDubleExchange, startPlaying } from '$lib/engine/remi/actions';
-import { isSamePiece } from '$lib/engine/remi/pieces';
+import { COLORS, isSamePiece } from '$lib/engine/remi/pieces';
 import type { Color, GameState, Piece } from '$lib/engine/remi/types';
 
 let seq = 0;
@@ -216,6 +217,54 @@ describe('soloStore — melding', () => {
 	});
 });
 
+describe('soloStore — strica jocul', () => {
+	it('rejects the redeal when the human holds fewer than 3 dube', () => {
+		// 52 distinct naturals: no seat holds a pair, so the human has
+		// no dube at all — far short of the 3-dublă bar.
+		const deck: Piece[] = [];
+		for (const color of COLORS) {
+			for (let value = 1; value <= 13; value++) {
+				deck.push(n(color, value));
+			}
+		}
+		const base = resolveDubleExchange(createGame({ playerCount: 2, deck }));
+		soloState.set(base);
+
+		soloStrica();
+
+		const after = get(soloState) as GameState;
+		expect(after).toBe(base);
+		expect(get(soloError)).toBe('Ai nevoie de cel puțin 3 duble ca să strici jocul.');
+	});
+
+	it('redeals and carries the session totals when the human holds 3 dube', () => {
+		// Three pairs lead the deck, so the human's 15 pieces hold exactly
+		// 3 dube; every later piece is distinct.
+		const deck: Piece[] = [
+			n('red', 1),
+			n('red', 1),
+			n('blue', 2),
+			n('blue', 2),
+			n('yellow', 3),
+			n('yellow', 3)
+		];
+		for (const color of COLORS) {
+			for (let value = 4; value <= 13; value++) {
+				deck.push(n(color, value));
+			}
+		}
+		const base = resolveDubleExchange(createGame({ playerCount: 2, deck }));
+		soloState.set({ ...base, sessionTotals: [20, 5] });
+
+		soloStrica();
+
+		const after = get(soloState) as GameState;
+		expect(after.phase).toBe('duble');
+		expect(after.sessionTotals).toEqual([20, 5]);
+		expect(get(soloError)).toBeNull();
+	});
+});
+
 describe('soloStore — errors', () => {
 	it('reports a rejected action in Romanian and leaves the state untouched', () => {
 		const state = playingGame(2);
@@ -230,8 +279,15 @@ describe('soloStore — errors', () => {
 	});
 
 	it('clears the error once a legal action follows', () => {
-		playingGame(2);
+		const opened = playingGame(2);
+		// Turn 1 is the opener's discard-only turn (spec §1.4), so the human has to
+		// open before any draw is legal.
+		soloOpeningDiscard((opened.players[HUMAN_INDEX]?.rack[0] as { id: string }).id);
+
 		const before = get(soloState) as GameState;
+		expect(before.turnNumber).toBeGreaterThan(1);
+
+		// Discarding before drawing is still illegal.
 		soloDiscard((before.players[HUMAN_INDEX]?.rack[0] as { id: string }).id);
 		expect(get(soloError)).not.toBeNull();
 
@@ -241,6 +297,16 @@ describe('soloStore — errors', () => {
 });
 
 describe('soloStore — session', () => {
+	it('rejects the next game while a game is still in progress', () => {
+		const state = playingGame(2);
+
+		soloNextGame();
+
+		const after = get(soloState) as GameState;
+		expect(after).toBe(state);
+		expect(get(soloError)).toBe('Jocul curent nu s-a terminat.');
+	});
+
 	it('rotates the first player to the previous winner and keeps session totals', () => {
 		startSoloGame(2);
 		soloResolveDuble();

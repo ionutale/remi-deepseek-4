@@ -13,6 +13,8 @@ import { pickWinner, scoreGame } from './scoring';
 import {
 	appendToSir,
 	cloneState,
+	MAX_TERTA_SIZE,
+	completesJokerTerta,
 	countDublePairs,
 	createFormation,
 	findMeld,
@@ -56,6 +58,8 @@ export const REASON = {
 	notYourTurn: 'it is not your turn',
 	notTheOpening: 'only the opening player can open the game',
 	drawFirst: 'draw first',
+	noDrawOnOpening: 'the opening turn is a discard only',
+	notMeldedToClose: 'you must meld before you can close',
 	alreadyDrew: 'you already drew this turn',
 	stockIsEmpty: 'stock is empty',
 	pieceNotInRack: 'that piece is not on your rack',
@@ -78,6 +82,7 @@ export const REASON = {
 	jokerNotInMeld: 'that joker is not in that meld',
 	jokerAlreadySwapped: 'that joker was already swapped',
 	jokerInIncompleteTerta: 'the joker cannot be used until the terta is completed',
+	jokerNotTertaCompleter: 'only the player who completed the terta can use the joker',
 	wrongReplacement: 'the replacement must be the exact piece the joker substitutes',
 	// discards / closing
 	mustUseTakenPiece: 'you must use the taken piece in a formation this turn',
@@ -100,8 +105,6 @@ const MIN_RACK_TO_BREAK_SIR = 3;
 const MIN_RACK_COMPOSERS = 2;
 const PE_TABLA_WINDOW_TURNS = 3;
 const STRICA_JOCUL_DUBLES = 3;
-/** Ropet §1.5: a terță holds at most 4 pieces. */
-const MAX_TERTA_SIZE = 4;
 
 function bump(state: GameState, patch: Partial<GameState> = {}): GameState {
 	return { ...state, ...patch, revision: state.revision + 1 };
@@ -341,6 +344,24 @@ function requirePlaying(state: GameState): void {
 }
 
 /**
+ * Spec §1.4 + interpretation #8: the opener's turn is a single discard, no
+ * draw. While the șir is still empty nobody has discarded, so no draw source is
+ * open yet.
+ */
+function requireNotOpening(state: GameState): void {
+	const opening =
+		state.turnNumber === 1 &&
+		state.currentPlayerIndex === state.firstPlayerIndex &&
+		state.table.sir.length === 0;
+	if (opening) throw new Error(REASON.noDrawOnOpening);
+}
+
+/** Melding, lipire, swapping and closing all happen after the turn's draw (§1.4). */
+function requireTurnDraw(state: GameState): void {
+	if (!state.turnState.hasDrawn) throw new Error(REASON.drawFirst);
+}
+
+/**
  * Spec §1.4: every turn but the opening is "draw one piece, optionally meld,
  * then discard one piece". Stock, last șir piece and atu are alternative draws,
  * never two of them in the same turn.
@@ -410,6 +431,7 @@ export function openingDiscard(state: GameState, pieceId: string): GameState {
 
 export function drawStock(state: GameState): GameState {
 	requirePlaying(state);
+	requireNotOpening(state);
 	claimDraw(state);
 	if (state.table.stock.length === 0) throw new Error(REASON.stockIsEmpty);
 
@@ -428,6 +450,7 @@ export function drawStock(state: GameState): GameState {
 /** Takes the last șir piece (never the dead first one). Must be melded this turn. */
 export function takeLastFromSir(state: GameState): GameState {
 	requirePlaying(state);
+	requireNotOpening(state);
 	claimDraw(state);
 	// `sir[0]` is dead for the whole game, so it is never "the last piece".
 	if (state.table.sir.length === 0) throw new Error(REASON.sir.sirEmpty);
@@ -450,6 +473,7 @@ export function takeLastFromSir(state: GameState): GameState {
 
 export function takeAtu(state: GameState): GameState {
 	requirePlaying(state);
+	requireNotOpening(state);
 	claimDraw(state);
 	const atu = state.table.atu;
 	if (!atu) throw new Error(REASON.noAtu);
@@ -476,6 +500,7 @@ export function takeAtu(state: GameState): GameState {
  */
 export function breakSir(state: GameState, pieceId: string): GameState {
 	requirePlaying(state);
+	requireNotOpening(state);
 	claimDraw(state);
 	const index = state.currentPlayerIndex;
 	const player = playerOf(state, index);
@@ -530,6 +555,7 @@ export function meld(
 ): GameState {
 	requirePlaying(state);
 	const player = requireCurrentPlayer(state, playerIdx);
+	requireTurnDraw(state);
 	if (player.peTabla) throw new Error(REASON.peTablaCannotMeld);
 	if (state.turnNumber <= state.players.length) throw new Error(REASON.noMeldsFirstRound);
 	if (formations.length === 0) throw new Error(REASON.noMeldsToDeclare);
@@ -573,14 +599,6 @@ export function meld(
 	});
 }
 
-/** Whether `playerIdx` may lipi onto the meld owned by `owner`. */
-function canLipire(state: GameState, playerIdx: number, owner: number): boolean {
-	if (playerIdx === owner) return true;
-	const ownerState = state.players[owner];
-	if (!ownerState || ownerState.meldedTurn === null) return false;
-	return state.turnNumber > ownerState.meldedTurn + state.players.length;
-}
-
 export function lipi(
 	state: GameState,
 	playerIdx: number,
@@ -589,15 +607,17 @@ export function lipi(
 ): GameState {
 	requirePlaying(state);
 	const player = requireCurrentPlayer(state, playerIdx);
+	requireTurnDraw(state);
 	if (!player.melded) throw new Error(REASON.notMeldedToLipi);
 
 	const meld = findMeld(state.table.melds, meldId);
 	const piece = findPiece(player.rack, pieceId);
 	if (!piece) throw new Error(REASON.pieceNotInRack);
 
+	// Spec §1.6: once melding is open, pieces may be lipit onto ANY table meld.
+	// Only pe-tablă players and jokers are restricted, to opponents' melds.
 	if (meld.owner !== playerIdx) {
 		if (player.peTabla) throw new Error(REASON.peTablaCannotLipit);
-		if (!canLipire(state, playerIdx, meld.owner)) throw new Error(REASON.lipiTooEarly);
 		if (piece.isJoker) throw new Error(REASON.jokerCannotLipit);
 	}
 
@@ -607,7 +627,15 @@ export function lipi(
 
 	const melds = state.table.melds.map((candidate) =>
 		candidate.id === meldId
-			? { ...candidate, pieces: extended, lipitBy: [...candidate.lipitBy, playerIdx] }
+			? {
+					...candidate,
+					pieces: extended,
+					lipitBy: [...candidate.lipitBy, playerIdx],
+					// Adding the fourth colour is what frees a terță's joker.
+					tertaCompleter: completesJokerTerta(candidate.type, extended)
+						? playerIdx
+						: (candidate.tertaCompleter ?? null)
+				}
 			: candidate
 	);
 
@@ -662,6 +690,7 @@ export function swapJoker(
 ): GameState {
 	requirePlaying(state);
 	const player = requireCurrentPlayer(state, playerIdx);
+	requireTurnDraw(state);
 	if (player.peTabla) throw new Error(REASON.peTablaCannotSwapJoker);
 
 	const meld = findMeld(state.table.melds, meldId);
@@ -672,10 +701,11 @@ export function swapJoker(
 	if (!(meld.pieces[slot] as Piece).isJoker) throw new Error(REASON.jokerNotInMeld);
 
 	// Ropet §1.6: a joker inside an unfinished terță (joker + 2 naturals) is
-	// locked until the fourth colour completes it. The player who adds that
-	// fourth piece may then use the joker — no extra bookkeeping needed.
-	if (meld.type === 'terta' && meld.pieces.length < MAX_TERTA_SIZE) {
-		throw new Error(REASON.jokerInIncompleteTerta);
+	// locked until the fourth colour completes it, and only the player who added
+	// that fourth piece may then use it.
+	if (meld.type === 'terta') {
+		if (meld.pieces.length < MAX_TERTA_SIZE) throw new Error(REASON.jokerInIncompleteTerta);
+		if (meld.tertaCompleter !== playerIdx) throw new Error(REASON.jokerNotTertaCompleter);
 	}
 
 	const replacement = findPiece(player.rack, replacementPieceId);
@@ -725,8 +755,18 @@ export function swapJoker(
  * Discards, closing, end of game
  * ------------------------------------------------------------------ */
 
-function finalize(state: GameState, closerIdx: number | null, reason: EndReason): GameState {
-	const { scores, breakdowns } = scoreGame(state, closerIdx);
+/**
+ * Scores the finished game. `closingPiece` is the piece the closer actually
+ * discarded, or null when they discarded none — a pe-tablă board that covered
+ * the whole rack (interpretation #11) or a game that ended with the stock empty.
+ */
+function finalize(
+	state: GameState,
+	closerIdx: number | null,
+	reason: EndReason,
+	closingPiece: Piece | null
+): GameState {
+	const { scores, breakdowns } = scoreGame(state, closerIdx, closingPiece);
 	return bump(state, {
 		phase: 'finished',
 		scores,
@@ -820,7 +860,13 @@ export function peTablaClose(state: GameState, playerIdx: number, pieceId: strin
 	const pattern = player.peTabla.pattern;
 	const completes = validatePattern(pattern, player.rack).valid;
 	if (completes)
-		return finalize(bump(state, { players: withComplete(playerIdx, state) }), playerIdx, 'close');
+		// The board covered the whole rack: no closing discard, so no joker x2.
+		return finalize(
+			bump(state, { players: withComplete(playerIdx, state) }),
+			playerIdx,
+			'close',
+			null
+		);
 
 	// One piece outside the pattern is discarded as the closing piece.
 	const discarded = findPiece(player.rack, pieceId);
@@ -841,7 +887,8 @@ export function peTablaClose(state: GameState, playerIdx: number, pieceId: strin
 			table: { ...state.table, sir: appendToSir(state.table.sir, discarded) }
 		}),
 		playerIdx,
-		'close'
+		'close',
+		discarded
 	);
 }
 
@@ -864,9 +911,14 @@ function withComplete(playerIdx: number, state: GameState): PlayerState[] {
 export function close(state: GameState, pieceId: string): GameState {
 	requirePlaying(state);
 
+	requireTurnDraw(state);
+
 	const index = state.currentPlayerIndex;
 	const player = playerOf(state, index);
 	if (player.peTabla) throw new Error(REASON.peTablaNoDiscard);
+	// Closing means everything but the closing piece is on the table, which only
+	// happens for a player who has etalat.
+	if (!player.melded) throw new Error(REASON.notMeldedToClose);
 
 	const returned = returnPendingPieces(state);
 	if (returned.rack.length !== 1) throw new Error(REASON.mustDiscardLast);
@@ -887,14 +939,15 @@ export function close(state: GameState, pieceId: string): GameState {
 			}
 		}),
 		index,
-		'close'
+		'close',
+		piece
 	);
 }
 
 /** The stock ran out: nobody gets the closing bonus (spec §1.8). */
 export function endByStockOut(state: GameState): GameState {
 	requirePlaying(state);
-	return finalize(state, null, 'stock-out');
+	return finalize(state, null, 'stock-out', null);
 }
 
 /** Re-exported so callers can copy a state before experimenting with it. */

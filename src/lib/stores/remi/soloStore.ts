@@ -43,7 +43,7 @@ import {
 	withdrawDuble
 } from '$lib/engine/remi/actions';
 import { playTurn } from '$lib/engine/remi/ai';
-import { isSamePiece } from '$lib/engine/remi/pieces';
+import { firstDuble, isSamePiece } from '$lib/engine/remi/pieces';
 import type { FormationType, GameState, PatternType, Piece } from '$lib/engine/remi/types';
 
 /** The human always sits at index 0; every AI seat is 1..n-1. */
@@ -60,6 +60,7 @@ export const SOLO_ERROR_COPY: Record<string, string> = {
 	[REASON.notAtuPhase]: 'Anunțul de atu se face înainte de începerea jocului.',
 	[REASON.alreadyOver]: 'Jocul s-a terminat.',
 	[REASON.notPlaying]: 'Jocul nu este în desfășurare.',
+	'you need at least 3 duble to strica jocul': 'Ai nevoie de cel puțin 3 duble ca să strici jocul.',
 	// duble
 	[REASON.noDuble]: 'Trebuie să ai ambele copii ale piesei ca să o oferi.',
 	[REASON.jokerCannotBeOffered]: 'Un joker nu poate fi oferit ca dublă.',
@@ -71,6 +72,7 @@ export const SOLO_ERROR_COPY: Record<string, string> = {
 	// turn structure
 	[REASON.notYourTurn]: 'Nu este rândul tău.',
 	[REASON.notTheOpening]: 'Prima aruncare o face doar jucătorul care începe.',
+	[REASON.noDrawOnOpening]: 'Prima tură este doar o aruncare — nu se trage piesă.',
 	[REASON.drawFirst]: 'Trage mai întâi o piesă.',
 	[REASON.alreadyDrew]: 'Ai tras deja o piesă în această tură.',
 	[REASON.stockIsEmpty]: 'Grămada este goală.',
@@ -93,12 +95,14 @@ export const SOLO_ERROR_COPY: Record<string, string> = {
 	[REASON.jokerNotInMeld]: 'Jokerul respectiv nu se află în acea formație.',
 	[REASON.jokerAlreadySwapped]: 'Jokerul respectiv a fost deja înlocuit o dată.',
 	[REASON.jokerInIncompleteTerta]: 'Jokerul nu poate fi folosit până când terța nu se completează.',
+	[REASON.jokerNotTertaCompleter]: 'Doar jucătorul care a completat terța poate folosi jokerul.',
 	[REASON.wrongReplacement]:
 		'Înlocuirea trebuie făcută cu piesa exactă pe care o substituie jokerul.',
 	// discards / closing
 	[REASON.mustUseTakenPiece]: 'Folosește piesa luată într-o formație înainte să arunci.',
 	[REASON.peTablaNoDiscard]: 'Un jucător pe tablă nu aruncă piese.',
 	[REASON.mustDiscardLast]: 'Poți închide doar aruncând ultima piesă de pe tablă.',
+	[REASON.notMeldedToClose]: 'Trebuie să te etalezi înainte să închizi.',
 	// pe tablă
 	[REASON.peTablaAlreadyDeclared]: 'Ai declarat deja jocul pe tablă.',
 	[REASON.peTablaWindowClosed]: 'Fereastra de declarare pe tablă s-a închis.',
@@ -134,7 +138,8 @@ export const SOLO_ERROR_COPY: Record<string, string> = {
 		'Prima piesă a șirului nu poate fi luată niciodată.',
 	[REASON.sir.pieceNotInSir]: 'Piesa aceea nu se află în șir.',
 	// store-level
-	noGame: 'Nu există niciun joc în desfășurare.'
+	noGame: 'Nu există niciun joc în desfășurare.',
+	'the current game is not finished': 'Jocul curent nu s-a terminat.'
 };
 
 const GENERIC_ERROR = 'Mutație invalidă.';
@@ -262,20 +267,6 @@ function piecesOf(state: GameState, pieceIds: string[]): Piece[] {
 	});
 }
 
-/** First held dublă (two identical naturals), deterministic by piece id. */
-function firstDuble(rack: Piece[]): Piece | null {
-	const ordered = [...rack].sort((a, b) => a.id.localeCompare(b.id));
-	for (const piece of ordered) {
-		if (piece.isJoker) continue;
-		const twins = ordered.filter(
-			(candidate) =>
-				!candidate.isJoker && candidate.value === piece.value && candidate.color === piece.color
-		);
-		if (twins.length >= 2) return piece;
-	}
-	return null;
-}
-
 /**
  * Every AI seat puts a dublă up straight away, without revealing values — the
  * blind exchange pairs them by category inside the engine.
@@ -343,6 +334,10 @@ export function soloWithdrawDuble(): void {
 /** Cancels the deal and redeals — available with 3+ duble held. */
 export function soloStrica(): void {
 	act((state) => {
+		// The same gate the server enforces: the human must hold 3 dube.
+		if (!canStricaJocul(state, HUMAN_INDEX)) {
+			throw new Error('you need at least 3 duble to strica jocul');
+		}
 		const playerCount = state.players.length as 2 | 3 | 4;
 		return prepare(stricaJocul({ playerCount }), state.sessionTotals);
 	});
@@ -486,6 +481,11 @@ export function soloPeTablaClose(pieceId: string): void {
  */
 export function soloNextGame(): void {
 	act((state) => {
+		// Only once the current game has ended — a mid-game call would
+		// throw away all the progress on the table.
+		if (state.phase !== 'finished') {
+			throw new Error('the current game is not finished');
+		}
 		const playerCount = state.players.length as 2 | 3 | 4;
 		// Single game per score: the previous winner opens the next one.
 		return prepare(createGame({ playerCount }), state.sessionTotals, state.gameWinner ?? 0);

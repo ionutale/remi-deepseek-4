@@ -221,10 +221,19 @@
 	}
 
 	function handlePeTablaClose() {
-		// The engine validates the pattern and accepts either "the board covers the
-		// whole rack" or "exactly one piece sits outside it".
-		const last = rack[0];
-		if (last) soloPeTablaClose(last.id);
+		const patternType = me?.peTabla?.pattern ?? pattern;
+		if (!patternType || rack.length === 0) return;
+		// The engine accepts "the board covers the whole rack" or "exactly
+		// one piece sits outside it" — prefer the piece whose removal makes
+		// the pattern valid; the engine reports any real problem.
+		const outside = rack.find(
+			(piece) =>
+				validatePattern(
+					patternType,
+					rack.filter((candidate) => candidate.id !== piece.id)
+				).valid
+		);
+		soloPeTablaClose((outside ?? rack[0]).id);
 	}
 
 	/** Lipire uses the rack piece currently selected on the rack. */
@@ -260,8 +269,8 @@
 		if (mustUse.length > 0)
 			return 'Ai luat o piesă: folosește-o într-o formație sau aruncă — dacă nu o folosești, se întoarce.';
 		if (!game.turnState.hasDrawn) return 'Trage o piesă: din grămadă, ultima din șir sau atuul.';
-		if (rack.length - mustUse.length === 1)
-			return 'Îți-a rămas o singură piesă — poți închide jocul.';
+		if (me?.melded && rack.length - mustUse.length === 1)
+			return 'Ți-a rămas o singură piesă — poți închide jocul.';
 		return 'Alege o piesă și etalează, lipește, aruncă sau închide.';
 	});
 
@@ -395,7 +404,7 @@
 		onlipi={isMyTurn && (me?.melded ?? false) && selectedPiece ? handleLipi : undefined}
 		onswapjoker={isMyTurn && !me?.peTabla && swapTargets.length > 0 ? handleSwapJoker : undefined}
 		onbreaksir={canBreakSir && breakSirMode ? (pieceId) => (breakSirTarget = pieceId) : undefined}
-		onclose={isMyTurn && !me?.peTabla && rack.length - mustUse.length === 1
+		onclose={isMyTurn && me?.melded && !me?.peTabla && rack.length - mustUse.length === 1
 			? handleClose
 			: undefined}
 		onpeTabla={isMyTurn && !me?.peTabla && !me?.melded && (me?.turnsTaken ?? 9) < 3

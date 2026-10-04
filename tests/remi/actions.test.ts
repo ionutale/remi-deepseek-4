@@ -82,7 +82,9 @@ function playing(
 		playerCount: racks.length as 2 | 3 | 4,
 		deck: deckOf(padRacks(racks), stock)
 	});
-	return { ...startPlaying(resolveDubleExchange(created)), ...extras };
+	// Turn 2 by default: turn 1 is the opener's discard-only turn (spec §1.4),
+	// which its own tests opt into explicitly.
+	return { ...startPlaying(resolveDubleExchange(created)), turnNumber: 2, ...extras };
 }
 
 /** Already etalat, with the turn their first meld happened on. */
@@ -98,6 +100,11 @@ function withRack(state: GameState, rack: Piece[], index = 0): GameState {
 
 function withMelds(state: GameState, melds: GameState['table']['melds']): GameState {
 	return { ...state, table: { ...state.table, melds } };
+}
+
+/** Marks the turn as already drawn, for tests about what may follow the draw. */
+function afterDraw(state: GameState): GameState {
+	return { ...state, turnState: { ...state.turnState, hasDrawn: true, drawnFrom: 'stock' } };
 }
 
 function withSir(state: GameState, sir: Piece[]): GameState {
@@ -547,7 +554,9 @@ describe('openingDiscard', () => {
 	function openGame() {
 		const rack0 = suiteOf('red', 3, 13);
 		rack0.push(n('yellow', 1), n('yellow', 2), n('yellow', 3), n('yellow', 4));
-		return playing([[...rack0], suiteOf('blue', 3, 13), [n('blue', 1, 'b1')]], []);
+		return playing([[...rack0], suiteOf('blue', 3, 13), [n('blue', 1, 'b1')]], [], {
+			turnNumber: 1
+		});
 	}
 
 	it('lays the first piece sideways as the dead piece and hands the turn over', () => {
@@ -584,6 +593,36 @@ describe('openingDiscard', () => {
 /* ------------------------------------------------------------------ *
  * Draws
  * ------------------------------------------------------------------ */
+
+describe('the opening turn is a discard only', () => {
+	/** Turn 1, the opener on turn, nothing on the șir yet. */
+	function openingState() {
+		return playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [n('blue', 2, 'top')], {
+			turnNumber: 1
+		});
+	}
+
+	it('refuses a stock draw', () => {
+		expect(() => drawStock(openingState())).toThrow(REASON.noDrawOnOpening);
+	});
+
+	it('refuses taking the last șir piece', () => {
+		expect(() => takeLastFromSir(openingState())).toThrow(REASON.noDrawOnOpening);
+	});
+
+	it('refuses taking the atu', () => {
+		expect(() => takeAtu(openingState())).toThrow(REASON.noDrawOnOpening);
+	});
+
+	it('refuses breaking the șir', () => {
+		expect(() => breakSir(openingState(), 'r3')).toThrow(REASON.noDrawOnOpening);
+	});
+
+	it('allows a draw as soon as the opener has discarded', () => {
+		const opened = openingDiscard(openingState(), 'r3');
+		expect(() => drawStock(opened)).not.toThrow();
+	});
+});
 
 describe('drawStock', () => {
 	it('takes the top of the grămadă', () => {
@@ -782,7 +821,7 @@ describe('meld', () => {
 	const opening = () => suiteOf('red', 9, 13);
 
 	function meldGame(rack0: Piece[], extras: Partial<GameState> = {}) {
-		return playing([[...rack0], [n('black', 9, 'x')]], [], { turnNumber: 3, ...extras });
+		return afterDraw(playing([[...rack0], [n('black', 9, 'x')]], [], { turnNumber: 3, ...extras }));
 	}
 
 	it('is refused during round 1', () => {
@@ -815,7 +854,8 @@ describe('meld', () => {
 				type: 'suite',
 				pieces,
 				owner: 0,
-				lipitBy: [null, null, null, null, null]
+				lipitBy: [null, null, null, null, null],
+				tertaCompleter: null
 			}
 		]);
 		expect(labels(after.players[0]?.rack ?? [])).not.toContain('red-9');
@@ -903,6 +943,19 @@ describe('meld', () => {
 		).toThrow(REASON.pieceUsedTwice);
 	});
 
+	it('is refused before the turn draw', () => {
+		const pieces = opening();
+		const undrawn = playing([[...pieces], [n('black', 9, 'x')]], [], { turnNumber: 3 });
+		expect(() => meld(undrawn, 0, [{ type: 'suite', pieces }])).toThrow(REASON.drawFirst);
+	});
+
+	it('makes the melder the completer of a joker terță', () => {
+		// A terță of 1s may open without a suită (spec §1.6), joker included.
+		const terta = [n('red', 1, 'r1'), n('blue', 1, 'b1'), n('yellow', 1, 'y1'), joker('openJoker')];
+		const melded = meld(meldGame(terta), 0, [{ type: 'terta', pieces: terta }]);
+		expect(melded.table.melds[0]?.tertaCompleter).toBe(0);
+	});
+
 	it('refuses an empty declaration', () => {
 		expect(() => meld(meldGame(opening()), 0, [])).toThrow(REASON.noMeldsToDeclare);
 	});
@@ -960,7 +1013,7 @@ describe('lipi', () => {
 			...player,
 			...meldedAt(index === 0 ? 3 : 4)
 		}));
-		return withMelds({ ...state, players }, [ownerMeld()]);
+		return afterDraw(withMelds({ ...state, players }, [ownerMeld()]));
 	}
 
 	it('extends an own meld and tags the piece as lipit', () => {
@@ -985,6 +1038,13 @@ describe('lipi', () => {
 		expect(() => lipi({ ...state, players }, 0, 'm0', 'r8')).toThrow(REASON.notMeldedToLipi);
 	});
 
+	it('is refused before the turn draw', () => {
+		const state = lipiGame(4, 0);
+		expect(() =>
+			lipi({ ...state, turnState: { ...state.turnState, hasDrawn: false } }, 0, 'm0', 'r8')
+		).toThrow(REASON.drawFirst);
+	});
+
 	it('refuses an unknown meld', () => {
 		expect(() => lipi(lipiGame(4, 0), 0, 'mX', 'r8')).toThrow(REASON.meldNotFound);
 	});
@@ -997,8 +1057,10 @@ describe('lipi', () => {
 		expect(() => lipi(lipiGame(6, 0), 1, 'm0', 'b8')).toThrow(REASON.notYourTurn);
 	});
 
-	it('refuses an opponent meld in the round it was laid', () => {
-		expect(() => lipi(lipiGame(5), 1, 'm0', 'b8')).toThrow(REASON.lipiTooEarly);
+	it('allows an opponent meld in the very round it was laid', () => {
+		// Spec §1.6: once melding is open, any table meld may be lipit onto.
+		const after = lipi(lipiGame(4), 1, 'm0', 'b8');
+		expect(after.table.melds[0]?.lipitBy).toEqual([null, null, null, 1]);
 	});
 
 	it('allows an opponent meld a full round later', () => {
@@ -1049,7 +1111,9 @@ describe('swapJoker', () => {
 		const state = playing([[...rack0], [n('black', 9, 'x')]], stock, { turnNumber: 4 });
 		const players = [...state.players];
 		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3) };
-		return withMelds({ ...state, players }, [createFormation('m0', type, meldPieces, 0)]);
+		return afterDraw(
+			withMelds({ ...state, players }, [createFormation('m0', type, meldPieces, 0)])
+		);
 	}
 
 	const jokerSuite = () => [n('red', 4, 'r4'), n('red', 5, 'r5'), theJoker()];
@@ -1072,7 +1136,7 @@ describe('swapJoker', () => {
 		const state = swapState([n('red', 6, 'r6'), n('blue', 3, 'b3')], jokerSuite(), 'suite', [
 			n('black', 5, 'stock5')
 		]);
-		const swapped = swapJoker(drawStock(state), 0, 'm0', 'the-joker', 'r6');
+		const swapped = swapJoker(state, 0, 'm0', 'the-joker', 'r6');
 
 		// The joker has no source to go back to, so it simply stays on the rack.
 		const after = discard(swapped, 'b3');
@@ -1093,6 +1157,19 @@ describe('swapJoker', () => {
 	it('rejects a replacement that is not on the rack', () => {
 		const state = swapState([], jokerSuite(), 'suite');
 		expect(() => swapJoker(state, 0, 'm0', 'the-joker', 'r6')).toThrow(REASON.pieceNotInRack);
+	});
+
+	it('is refused before the turn draw', () => {
+		const state = swapState([n('red', 6, 'r6')], jokerSuite(), 'suite');
+		expect(() =>
+			swapJoker(
+				{ ...state, turnState: { ...state.turnState, hasDrawn: false } },
+				0,
+				'm0',
+				'the-joker',
+				'r6'
+			)
+		).toThrow(REASON.drawFirst);
 	});
 
 	it('rejects a joker that is not in the meld', () => {
@@ -1143,6 +1220,51 @@ describe('swapJoker', () => {
 		expect(after.swappedJokerIds).toEqual(['the-joker']);
 	});
 
+	it('lets only the player who completed the terță swap its joker', () => {
+		const terta = [n('red', 5, 'r5'), n('blue', 5, 'b5'), theJoker()];
+		const state = swapState([n('yellow', 5, 'y5'), n('black', 5, 'k5')], terta, 'terta');
+
+		const completed = lipi(state, 0, 'm0', 'y5');
+		expect(completed.table.melds[0]?.tertaCompleter).toBe(0);
+
+		// The melder did not add the fourth colour, so the joker is not theirs.
+		const players = [...completed.players];
+		players[1] = { ...(players[1] as PlayerState), ...meldedAt(3) };
+		const asOpponent = { ...completed, players, currentPlayerIndex: 1 };
+		expect(() => swapJoker(asOpponent, 1, 'm0', 'the-joker', 'k5')).toThrow(
+			REASON.jokerNotTertaCompleter
+		);
+
+		expect(
+			swapJoker(completed, 0, 'm0', 'the-joker', 'k5').table.melds[0]?.pieces.map((p) => p.id)
+		).toEqual(['r5', 'b5', 'k5', 'y5']);
+	});
+
+	it('lets the melder swap the joker of a terță they completed by melding', () => {
+		const terta = [n('red', 5, 'r5'), n('blue', 5, 'b5'), n('yellow', 5, 'y5'), theJoker()];
+		const replacement = n('black', 5, 'k5');
+		const base = withRack(
+			afterDraw(playing([[...terta, replacement], [n('black', 9, 'x')]], [], { turnNumber: 4 })),
+			[...terta, replacement]
+		);
+		const players = [...base.players];
+		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3) };
+		const melded = meld({ ...base, players }, 0, [{ type: 'terta', pieces: terta }]);
+
+		expect(melded.table.melds[0]?.tertaCompleter).toBe(0);
+
+		const after = swapJoker(melded, 0, 'm0', 'the-joker', 'k5');
+		expect(after.table.melds[0]?.pieces.map((p) => p.id)).toEqual(['r5', 'b5', 'y5', 'k5']);
+		expect(labels(after.players[0]?.rack ?? [])).toContain('the-joker');
+	});
+
+	it('never lets a joker suită completer apply', () => {
+		const suite = [n('red', 4, 'r4'), n('red', 5, 'r5'), theJoker()];
+		const state = swapState([n('red', 6, 'r6')], suite, 'suite');
+		expect(state.table.melds[0]?.tertaCompleter).toBeNull();
+		expect(() => swapJoker(state, 0, 'm0', 'the-joker', 'r6')).not.toThrow();
+	});
+
 	it('swaps each joker at most once', () => {
 		const state = swapState([n('red', 6, 'r6')], jokerSuite(), 'suite');
 		const swapped = swapJoker(state, 0, 'm0', 'the-joker', 'r6');
@@ -1188,7 +1310,7 @@ describe('discard', () => {
 		expect(labels(after.players[0]?.rack ?? [])).toContain('r4');
 		expect(after.players[0]?.rack.at(-1)).toEqual(top);
 		expect(after.currentPlayerIndex).toBe(1);
-		expect(after.turnNumber).toBe(2);
+		expect(after.turnNumber).toBe(3);
 		expect(after.players[0]?.turnsTaken).toBe(1);
 		expect(after.turnState).toEqual({ hasDrawn: false, drawnFrom: null, mustUsePieceIds: [] });
 		expect(after.revision).toBe(state.revision + 2);
@@ -1403,7 +1525,9 @@ describe('nextTurn', () => {
 
 describe('declarePeTabla', () => {
 	it('is accepted during the first three turns', () => {
-		const state = playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [n('blue', 2, 'top')]);
+		const state = playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [n('blue', 2, 'top')], {
+			turnNumber: 1
+		});
 		const after = declarePeTabla(state, 0, 'bete');
 
 		expect(after.players[0]?.peTabla).toEqual({ pattern: 'bete', declaredTurn: 1 });
@@ -1613,9 +1737,9 @@ describe('close', () => {
 			...player,
 			...(index === 0 ? { ...meldedAt(3), rack } : {})
 		}));
-		return withMelds({ ...state, players }, [
-			createFormation('m0', 'suite', suiteOf('red', 5, 7), 0)
-		]);
+		return afterDraw(
+			withMelds({ ...state, players }, [createFormation('m0', 'suite', suiteOf('red', 5, 7), 0)])
+		);
 	}
 
 	it('scores the game with the closing bonus', () => {
@@ -1633,6 +1757,20 @@ describe('close', () => {
 		expect(after.revision).toBe(state.revision + 2);
 	});
 
+	it('is refused before the turn draw', () => {
+		const state = closingGame([n('black', 9, 'last')]);
+		expect(() =>
+			close({ ...state, turnState: { ...state.turnState, hasDrawn: false } }, 'last')
+		).toThrow(REASON.drawFirst);
+	});
+
+	it('is refused by a player who never etalat', () => {
+		const state = closingGame([n('black', 9, 'last')]);
+		const players = [...state.players];
+		players[0] = { ...(players[0] as PlayerState), melded: false };
+		expect(() => close({ ...state, players }, 'last')).toThrow(REASON.notMeldedToClose);
+	});
+
 	it('refuses while the player still holds pieces', () => {
 		const state = closingGame([n('black', 9, 'a'), n('black', 8, 'b')]);
 		expect(() => close(state, 'a')).toThrow(REASON.mustDiscardLast);
@@ -1647,11 +1785,15 @@ describe('close', () => {
 	function strandedState() {
 		const dead = n('blue', 1, 'dead');
 		const taken = n('red', 7, 'taken7');
-		const base = withSir(
-			withRack(playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [], { turnNumber: 5 }), []),
-			[dead, taken]
-		);
-		const takenState = takeLastFromSir(base);
+		const base = playing([[n('red', 3, 'r3')], [n('black', 9, 'x')]], [], { turnNumber: 5 });
+		const players = [...base.players];
+		players[0] = { ...(players[0] as PlayerState), ...meldedAt(3), rack: [] };
+
+		const takenState = takeLastFromSir({
+			...base,
+			players,
+			table: { ...base.table, sir: [dead, taken] }
+		});
 		expect(labels(takenState.players[0]?.rack ?? [])).toEqual(['taken7']);
 		return takenState;
 	}
@@ -1795,7 +1937,7 @@ describe('purity', () => {
 
 		drawStock(state);
 		discard(drawStock(state), 'r4');
-		meld(state, 0, [{ type: 'suite', pieces: suiteOf('red', 9, 13) }]);
+		meld(afterDraw(state), 0, [{ type: 'suite', pieces: suiteOf('red', 9, 13) }]);
 
 		expect(JSON.stringify(state)).toBe(snapshot);
 	});
